@@ -4,7 +4,10 @@ from ctypes import byref
 
 import sdl2
 
-KEY_NAMES = {sdl2.SDLK_LEFT: "left", sdl2.SDLK_RIGHT: "right", sdl2.SDLK_r: "r"}
+KEY_NAMES = {
+    sdl2.SDLK_LEFT: "left", sdl2.SDLK_RIGHT: "right", sdl2.SDLK_r: "r",
+    sdl2.SDLK_SPACE: "space",
+}
 
 
 def poll_events(controls):
@@ -19,6 +22,7 @@ def poll_events(controls):
             elif event.window.event == sdl2.SDL_WINDOWEVENT_FOCUS_LOST:
                 controls.focused = False
                 controls.held.clear()
+                controls.jump_requested = False
             elif event.window.event == sdl2.SDL_WINDOWEVENT_FOCUS_GAINED:
                 controls.focused = True
         elif event.type in (sdl2.SDL_KEYDOWN, sdl2.SDL_KEYUP):

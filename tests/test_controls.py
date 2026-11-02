@@ -37,7 +37,7 @@ class InputTests(unittest.TestCase):
 
     def test_unsupported_keys_are_ignored(self):
         controls = Controls()
-        for key in ("up", "down", "space", "a", None):
+        for key in ("up", "down", "a", None):
             controls.set_key(key, True)
         self.assertEqual(controls.held, set())
 

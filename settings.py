@@ -11,6 +11,8 @@ CHARACTER_SCALE = 0.6
 PLAYER_HALF_WIDTH = FRAME_WIDTH * CHARACTER_SCALE / 2
 # Feet rest on the sidewalk just above the curb in newfirststage.png at 720p.
 GROUND_Y = 140
-ANIMATIONS = {"IDLE": (0, 6), "WALK": (1, 8), "RUN": (2, 12)}
+ANIMATIONS = {"IDLE": (0, 6), "WALK": (1, 8), "RUN": (2, 12), "JUMP": (3, 10)}
 WALK_SPEED = 180.0
 RUN_SPEED = 320.0
+JUMP_SPEED = 480.0
+GRAVITY = 1200.0

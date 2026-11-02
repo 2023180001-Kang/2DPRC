@@ -27,6 +27,7 @@ class Player:
     x: float = WIDTH / 2
     foot_y: float = GROUND_Y
     state: str = "IDLE"
+    facing: int = 1
     animation_time: float = 0.0
 
     @property
@@ -34,5 +35,7 @@ class Player:
         return int(self.animation_time * IDLE_FPS) % FRAME_COUNT
 
     def update(self, dt, controls):
+        if controls.direction:
+            self.facing = controls.direction
         self.x += controls.direction * WALK_SPEED * dt
         self.animation_time += dt

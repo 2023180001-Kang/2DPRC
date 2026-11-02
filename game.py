@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from settings import ANIMATIONS, FRAME_COUNT, GROUND_Y, WALK_SPEED, WIDTH
+from settings import ANIMATIONS, FRAME_COUNT, GROUND_Y, RUN_SPEED, WALK_SPEED, WIDTH
 
 
 @dataclass
@@ -41,7 +41,8 @@ class Player:
     def update(self, dt, controls):
         if controls.direction:
             self.facing = controls.direction
-        self.x += controls.direction * WALK_SPEED * dt
+        speed = RUN_SPEED if "r" in controls.held else WALK_SPEED
+        self.x += controls.direction * speed * dt
         next_state = "WALK" if controls.direction else "IDLE"
         if next_state != self.state:
             self.state = next_state

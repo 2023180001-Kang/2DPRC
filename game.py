@@ -8,11 +8,12 @@ from settings import ANIMATIONS, FRAME_COUNT, GROUND_Y, RUN_SPEED, WALK_SPEED, W
 @dataclass
 class Controls:
     held: set[str] = field(default_factory=set)
+    focused: bool = True
 
     def set_key(self, key, down):
         if key not in {"left", "right", "r"}:
             return
-        if down:
+        if down and self.focused:
             self.held.add(key)
         else:
             self.held.discard(key)

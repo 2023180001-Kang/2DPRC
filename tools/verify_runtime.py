@@ -23,7 +23,7 @@ def push(kind, value=None):
         event.type = sdl2.SDL_KEYDOWN if kind == "down" else sdl2.SDL_KEYUP
         event.key.windowID = sdl2.SDL_GetWindowID(core.window)
         event.key.keysym.sym = {"left": sdl2.SDLK_LEFT, "right": sdl2.SDLK_RIGHT,
-                               "r": sdl2.SDLK_r}[value]
+                               "r": sdl2.SDLK_r, "space": sdl2.SDLK_SPACE}[value]
     elif kind == "quit":
         event.type = sdl2.SDL_QUIT
     else:
@@ -47,6 +47,72 @@ def capture(path):
                                pixels, pitch) < 0:
         raise RuntimeError(sdl2.SDL_GetError())
     Image.frombytes("RGBA", (width.value, height.value), bytes(pixels)).save(path)
+
+
+def verify_jumping(output):
+    actions = {
+        0: [("focus", True)],
+        1: [("down", "space"), ("up", "space")],
+        8: [("down", "space")],
+        9: [("up", "space")],
+        60: [("down", "right"), ("down", "r"), ("down", "space")],
+        65: [("up", "right"), ("down", "left")],
+        121: [("up", "space")],
+        130: [("down", "space"), ("up", "space")],
+        135: [("focus", False)],
+        136: [("focus", True)],
+        191: [("quit", None)],
+    }
+    records, screenshots = [], []
+    tick = -1
+
+    def feed(controls):
+        nonlocal tick
+        tick += 1
+        if tick == 0:
+            poll_events(controls)
+        for kind, value in actions.get(tick, []):
+            push(kind, value)
+        return poll_events(controls)
+
+    def observe(image, player):
+        draw_character(image, player)
+        records.append({"state": player.state, "foot_y": player.foot_y,
+                        "vertical_speed": player.vertical_speed, "row": player.row,
+                        "frame": player.frame, "x": player.x, "facing": player.facing})
+        shot = None
+        if tick < 60 and player.state == "JUMP":
+            if player.vertical_speed > 0:
+                shot = "jump-rise"
+            elif "jump-apex" not in screenshots:
+                shot = "jump-apex"
+            elif player.foot_y < GROUND_Y + 48:
+                shot = "jump-fall"
+        elif tick < 60 and "jump-rise" in screenshots:
+            shot = "jump-land"
+        if tick in (62, 70):
+            shot = "jump-run-right" if tick == 62 else "jump-run-left"
+        if shot and shot not in screenshots:
+            capture(output / f"{shot}.png")
+            screenshots.append(shot)
+
+    with patch("main.poll_events", side_effect=feed), patch("main.draw_character", side_effect=observe):
+        result = main.run(frame_limit=210)
+    assert result["frames"] == 191, result
+    for tick, state in {0: "IDLE", 1: "JUMP", 8: "JUMP", 55: "IDLE", 60: "JUMP",
+                        65: "JUMP", 120: "RUN", 130: "JUMP", 135: "JUMP", 190: "IDLE"}.items():
+        assert records[tick]["state"] == state, (tick, records[tick])
+    assert records[65]["facing"] == -1
+    assert records[65]["frame"] >= records[64]["frame"]
+    assert records[55]["foot_y"] == records[120]["foot_y"] == records[190]["foot_y"] == GROUND_Y
+    assert all(record["row"] == 3 for record in records if record["state"] == "JUMP")
+    assert all(GROUND_Y <= record["foot_y"] <= GROUND_Y + 96 + 1e-6 for record in records)
+    assert all(PLAYER_HALF_WIDTH <= record["x"] <= WIDTH - PLAYER_HALF_WIDTH for record in records)
+    assert len(screenshots) == 6, screenshots
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"scripted_jump": "PASS", "screenshots": screenshots,
+                   "peak_height": max(record["foot_y"] for record in records) - GROUND_Y})
+    return result
 
 
 def verify():
@@ -123,7 +189,8 @@ def verify():
                 raise AssertionError("Missing character must fail")
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"scripted_input": "PASS", "window_close": "PASS", "partial_load_cleanup": "PASS",
-                   "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected]})
+                   "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
+                   "jump": verify_jumping(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 

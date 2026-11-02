@@ -8,6 +8,39 @@ from settings import (
 
 
 class JumpingTests(unittest.TestCase):
+    def test_jump_frames_do_not_wrap(self):
+        player = Player(state="JUMP", animation_time=100)
+        self.assertEqual(player.frame, 7)
+        player.state = "WALK"
+        self.assertEqual(player.frame, 0)
+
+    def test_jump_animation_matches_physical_phase(self):
+        controls, player = Controls(), Player()
+        controls.set_key("space", True)
+        player.update(0, controls)
+        self.assertEqual((player.row, player.frame), (3, 0))
+        player.update(0.4, controls)
+        self.assertEqual(player.frame, 4)
+        player.update(0.3, controls)
+        self.assertEqual(player.frame, 7)
+
+    def test_air_direction_and_run_changes_do_not_reset_animation(self):
+        controls, player = Controls(), Player()
+        controls.set_key("space", True)
+        player.update(0.3, controls)
+        controls.set_key("left", True)
+        controls.set_key("r", True)
+        player.update(0, controls)
+        self.assertEqual((player.state, player.frame, player.facing), ("JUMP", 3, -1))
+
+    def test_landing_resets_ground_animation(self):
+        controls, player = Controls(), Player()
+        controls.set_key("space", True)
+        player.update(0.7, controls)
+        controls.set_key("right", True)
+        player.update(0.1, controls)
+        self.assertEqual((player.state, player.frame, player.animation_time), ("WALK", 0, 0))
+
     def test_defaults_and_grounded_requires_floor_and_zero_velocity(self):
         self.assertEqual((JUMP_SPEED, GRAVITY, GROUND_Y), (480.0, 1200.0, 140))
         self.assertEqual(ANIMATIONS["JUMP"], (3, 10))

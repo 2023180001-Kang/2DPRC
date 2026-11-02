@@ -7,7 +7,8 @@ from game import Player
 from rendering import draw_background, draw_character
 from resources import IMAGE_FILES, ROOT
 from settings import (
-    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH, HEIGHT, WIDTH,
+    ANIMATIONS, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_ROWS,
+    FRAME_WIDTH, HEIGHT, WIDTH,
 )
 
 
@@ -35,10 +36,9 @@ class RenderingTests(unittest.TestCase):
 
     def test_all_frames_clip_inside_sheet(self):
         image = Mock(h=FRAME_HEIGHT * FRAME_ROWS)
-        for state, row in (("IDLE", 0), ("WALK", 1), ("RUN", 2)):
+        for state, (row, fps) in ANIMATIONS.items():
             for frame in range(8):
                 player = Player(state=state)
-                fps = {"IDLE": 6, "WALK": 8, "RUN": 12}[state]
                 player.animation_time = frame / fps
                 draw_character(image, player)
                 args = image.clip_composite_draw.call_args.args

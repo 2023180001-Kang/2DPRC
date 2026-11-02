@@ -44,7 +44,8 @@ class Player:
 
     @property
     def frame(self):
-        return int(self.animation_time * ANIMATIONS[self.state][1]) % FRAME_COUNT
+        frame = int(self.animation_time * ANIMATIONS[self.state][1])
+        return min(frame, FRAME_COUNT - 1) if self.state == "JUMP" else frame % FRAME_COUNT
 
     @property
     def row(self):
@@ -76,6 +77,9 @@ class Player:
         if next_state != self.state:
             self.state = next_state
             self.animation_time = 0.0
-        else:
+        elif next_state != "JUMP":
             duration = FRAME_COUNT / ANIMATIONS[self.state][1]
             self.animation_time = (self.animation_time + dt) % duration
+        if next_state == "JUMP":
+            # Keep the pose aligned with the physical arc, including long frames.
+            self.animation_time = (JUMP_SPEED - self.vertical_speed) / GRAVITY

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from settings import FRAME_COUNT, GROUND_Y, IDLE_FPS, WALK_SPEED, WIDTH
+from settings import ANIMATIONS, FRAME_COUNT, GROUND_Y, WALK_SPEED, WIDTH
 
 
 @dataclass
@@ -32,10 +32,19 @@ class Player:
 
     @property
     def frame(self):
-        return int(self.animation_time * IDLE_FPS) % FRAME_COUNT
+        return int(self.animation_time * ANIMATIONS[self.state][1]) % FRAME_COUNT
+
+    @property
+    def row(self):
+        return ANIMATIONS[self.state][0]
 
     def update(self, dt, controls):
         if controls.direction:
             self.facing = controls.direction
         self.x += controls.direction * WALK_SPEED * dt
-        self.animation_time += dt
+        next_state = "WALK" if controls.direction else "IDLE"
+        if next_state != self.state:
+            self.state = next_state
+            self.animation_time = 0.0
+        else:
+            self.animation_time += dt

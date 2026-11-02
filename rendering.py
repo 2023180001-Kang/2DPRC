@@ -12,6 +12,7 @@ def draw_character(image, player):
     width = FRAME_WIDTH * CHARACTER_SCALE
     height = FRAME_HEIGHT * CHARACTER_SCALE
     image.clip_composite_draw(
-        player.frame * FRAME_WIDTH, image.h - FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT,
+        player.frame * FRAME_WIDTH, image.h - (player.row + 1) * FRAME_HEIGHT,
+        FRAME_WIDTH, FRAME_HEIGHT,
         0, "h" if player.facing < 0 else "", player.x, player.foot_y + height / 2, width, height,
     )

@@ -1,0 +1,132 @@
+"""Exercise the actual canvas with synthetic SDL events and save screenshots."""
+
+from ctypes import byref, c_int, c_ubyte
+import json
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
+
+from PIL import Image
+import pico2d.pico2d as core
+import sdl2
+
+import main
+from events import poll_events
+from rendering import draw_character
+from resources import ROOT, ResourceError, load_images
+from settings import GROUND_Y, PLAYER_HALF_WIDTH, WIDTH
+
+
+def push(kind, value=None):
+    event = sdl2.SDL_Event()
+    if kind in ("down", "up"):
+        event.type = sdl2.SDL_KEYDOWN if kind == "down" else sdl2.SDL_KEYUP
+        event.key.windowID = sdl2.SDL_GetWindowID(core.window)
+        event.key.keysym.sym = {"left": sdl2.SDLK_LEFT, "right": sdl2.SDLK_RIGHT,
+                               "r": sdl2.SDLK_r}[value]
+    elif kind == "quit":
+        event.type = sdl2.SDL_QUIT
+    else:
+        event.type = sdl2.SDL_WINDOWEVENT
+        event.window.windowID = sdl2.SDL_GetWindowID(core.window)
+        event.window.event = {
+            "focus": sdl2.SDL_WINDOWEVENT_FOCUS_GAINED if value else sdl2.SDL_WINDOWEVENT_FOCUS_LOST,
+            "close": sdl2.SDL_WINDOWEVENT_CLOSE,
+        }[kind]
+    if sdl2.SDL_PushEvent(byref(event)) != 1:
+        raise RuntimeError(f"SDL_PushEvent failed: {sdl2.SDL_GetError()!r}")
+
+
+def capture(path):
+    width, height = c_int(), c_int()
+    if sdl2.SDL_GetRendererOutputSize(core.renderer, byref(width), byref(height)) < 0:
+        raise RuntimeError(sdl2.SDL_GetError())
+    pitch = width.value * 4
+    pixels = (c_ubyte * (pitch * height.value))()
+    if sdl2.SDL_RenderReadPixels(core.renderer, None, sdl2.SDL_PIXELFORMAT_RGBA32,
+                               pixels, pitch) < 0:
+        raise RuntimeError(sdl2.SDL_GetError())
+    Image.frombytes("RGBA", (width.value, height.value), bytes(pixels)).save(path)
+
+
+def verify():
+    output = ROOT / "artifacts"
+    output.mkdir(exist_ok=True)
+    actions = {
+        0: [("focus", True)],
+        1: [("down", "right")],
+        31: [("down", "r")],
+        182: [("up", "r")],
+        183: [("up", "right")],
+        184: [("down", "r")],
+        185: [("down", "left")],
+        422: [("down", "right")],
+        423: [("up", "left")],
+        450: [("focus", False)],
+        451: [("focus", True), ("down", "left")],
+        481: [("up", "left")],
+        482: [("quit", None)],
+    }
+    shots = {0: "idle", 15: "walk-right", 80: "run-right", 181: "right-boundary",
+             240: "run-left", 421: "left-boundary", 450: "focus-lost", 460: "walk-left"}
+    records = []
+    tick = -1
+
+    def feed(controls):
+        nonlocal tick
+        tick += 1
+        if tick == 0:
+            poll_events(controls)
+        for kind, value in actions.get(tick, []):
+            push(kind, value)
+        return poll_events(controls)
+
+    def observe(image, player):
+        draw_character(image, player)
+        records.append({"tick": tick, "state": player.state, "x": player.x,
+                        "facing": player.facing, "frame": player.frame, "foot_y": player.foot_y})
+        if tick in shots:
+            capture(output / f"{shots[tick]}.png")
+
+    with patch("main.poll_events", side_effect=feed), patch("main.draw_character", side_effect=observe):
+        result = main.run(frame_limit=500)
+
+    expected = {0: ("IDLE", 1), 1: ("WALK", 1), 31: ("RUN", 1), 182: ("WALK", 1),
+                183: ("IDLE", 1), 184: ("IDLE", 1), 185: ("RUN", -1),
+                422: ("IDLE", -1), 423: ("RUN", 1), 450: ("IDLE", 1),
+                451: ("WALK", -1), 481: ("IDLE", -1)}
+    assert result["frames"] == 482, result
+    for tick, (state, facing) in expected.items():
+        assert (records[tick]["state"], records[tick]["facing"]) == (state, facing), records[tick]
+    assert records[181]["x"] == WIDTH - PLAYER_HALF_WIDTH
+    assert records[421]["x"] == PLAYER_HALF_WIDTH
+    assert all(record["foot_y"] == GROUND_Y for record in records)
+    assert all(PLAYER_HALF_WIDTH <= record["x"] <= WIDTH - PLAYER_HALF_WIDTH for record in records)
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+
+    def close_window(controls):
+        push("close")
+        return poll_events(controls)
+
+    with patch("main.poll_events", side_effect=close_window):
+        assert main.run(frame_limit=3)["frames"] == 0
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+
+    with tempfile.TemporaryDirectory(dir=output) as directory:
+        Image.new("RGBA", (16, 16), "black").save(Path(directory) / "firststage.png")
+        with patch("main.load_images", side_effect=lambda: load_images(directory)):
+            try:
+                main.run(frame_limit=1)
+            except ResourceError as error:
+                assert "character.png" in str(error)
+            else:
+                raise AssertionError("Missing character must fail")
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"scripted_input": "PASS", "window_close": "PASS", "partial_load_cleanup": "PASS",
+                   "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected]})
+    (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    verify()

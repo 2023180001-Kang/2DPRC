@@ -5,18 +5,26 @@ import sys
 from time import perf_counter, sleep
 
 import pico2d
+import pico2d.pico2d as core
 
 from events import poll_events
 from game import Controls, Player
-from resources import ResourceError, load_images
+from resources import ResourceError, load_images, release_images
 from rendering import draw_background, draw_character
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
 def run(frame_limit=None):
-    pico2d.open_canvas(WIDTH, HEIGHT, sync=True)
     images = {}
+    # pico2d 1.5.1 cleanup expects these globals even after partial startup.
+    core.window = core.renderer = None
+    core.audio_on = False
     try:
+        pico2d.open_canvas(WIDTH, HEIGHT, sync=True)
+        if not core.window or not core.renderer:
+            raise RuntimeError(f"Cannot create canvas: {core.SDL_GetError()!r}")
+        pico2d.hide_lattice()
+        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrow keys: walk | Hold R: run")
         images = load_images()
         player = Player()
         controls = Controls()
@@ -42,8 +50,12 @@ def run(frame_limit=None):
         elapsed = perf_counter() - started
         return {"frames": frames, "seconds": elapsed, "fps": frames / elapsed}
     finally:
-        images.clear()
-        pico2d.close_canvas()
+        try:
+            release_images(images)
+        finally:
+            pico2d.close_canvas()
+            core.window = core.renderer = None
+            core.audio_on = False
 
 
 if __name__ == "__main__":
@@ -54,8 +66,8 @@ if __name__ == "__main__":
         parser.error("--frames must be positive")
     try:
         result = run(frame_limit=args.frames)
-    except ResourceError as error:
-        print(f"Resource error: {error}", file=sys.stderr)
+    except (ResourceError, RuntimeError) as error:
+        print(f"Game error: {error}", file=sys.stderr)
         sys.exit(1)
     if args.frames is not None:
         print(result)

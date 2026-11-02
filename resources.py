@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pico2d
+import sdl2
 
 ROOT = Path(__file__).resolve().parent
 IMAGE_FILES = {"background": "firststage.png", "character": "assets/character.png"}
@@ -10,6 +11,16 @@ IMAGE_FILES = {"background": "firststage.png", "character": "assets/character.pn
 
 class ResourceError(RuntimeError):
     pass
+
+
+def release_images(images):
+    # Tracebacks can retain Image objects after the renderer has been destroyed.
+    for image in images.values():
+        texture = image.texture
+        image.texture = None
+        if texture:
+            sdl2.SDL_DestroyTexture(texture)
+    images.clear()
 
 
 def load_images(root=ROOT):
@@ -25,5 +36,5 @@ def load_images(root=ROOT):
                 raise ResourceError(f"Cannot load image: {path}") from error
         return images
     except Exception:
-        images.clear()
+        release_images(images)
         raise

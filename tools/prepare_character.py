@@ -1,7 +1,7 @@
 """Remove border-connected sheet background without modifying the source."""
 
-from collections import deque
 import argparse
+from collections import deque
 from pathlib import Path
 
 from PIL import Image
@@ -18,11 +18,12 @@ def prepare(source=ROOT / "MainCharacter.png", output=ROOT / "assets/character.p
     if sheet.size != (COLUMNS * FRAME_WIDTH, ROWS * FRAME_HEIGHT):
         raise ValueError("Sprite sheet must contain 8 by 3 cells of 256 by 256 pixels")
     width, height = sheet.width // COLUMNS, sheet.height // ROWS
-    print(f"Source corner: {sheet.getpixel((0, 0))}; extrema: {sheet.getextrema()}")
     for row in range(ROWS):
         for column in range(COLUMNS):
             box = (column * width, row * height, (column + 1) * width, (row + 1) * height)
             frame = sheet.crop(box)
+            # Almost invisible matte remnants must not determine the frame anchor.
+            frame.putalpha(frame.getchannel("A").point(lambda alpha: alpha if alpha >= 128 else 0))
             pixels = frame.load()
             visited = set()
             queue = deque(
@@ -54,7 +55,6 @@ def prepare(source=ROOT / "MainCharacter.png", output=ROOT / "assets/character.p
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output)
     print(f"Prepared {output}: {sheet.width}x{sheet.height}, cells {width}x{height}")
-    print(f"Alpha range: {sheet.getchannel('A').getextrema()}")
     if preview:
         preview_path = ROOT / "artifacts/character-preview.png"
         preview_path.parent.mkdir(parents=True, exist_ok=True)

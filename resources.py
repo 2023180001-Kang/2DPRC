@@ -5,7 +5,7 @@ from pathlib import Path
 import pico2d
 
 ROOT = Path(__file__).resolve().parent
-IMAGE_FILES = {"background": "firststage.png", "character": "MainCharacter.png"}
+IMAGE_FILES = {"background": "firststage.png", "character": "assets/character.png"}
 
 
 class ResourceError(RuntimeError):

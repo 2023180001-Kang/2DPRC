@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from settings import ANIMATIONS, FRAME_COUNT, GROUND_Y, RUN_SPEED, WALK_SPEED, WIDTH
+from settings import (
+    ANIMATIONS, FRAME_COUNT, GROUND_Y, PLAYER_HALF_WIDTH, RUN_SPEED, WALK_SPEED, WIDTH,
+)
 
 
 @dataclass
@@ -44,6 +46,7 @@ class Player:
             self.facing = controls.direction
         speed = RUN_SPEED if "r" in controls.held else WALK_SPEED
         self.x += controls.direction * speed * dt
+        self.x = max(PLAYER_HALF_WIDTH, min(WIDTH - PLAYER_HALF_WIDTH, self.x))
         next_state = "WALK" if controls.direction else "IDLE"
         if controls.direction and "r" in controls.held:
             next_state = "RUN"

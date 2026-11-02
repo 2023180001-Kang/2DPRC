@@ -54,4 +54,5 @@ class Player:
             self.state = next_state
             self.animation_time = 0.0
         else:
-            self.animation_time += dt
+            duration = FRAME_COUNT / ANIMATIONS[self.state][1]
+            self.animation_time = (self.animation_time + dt) % duration

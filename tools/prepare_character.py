@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from settings import FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH
+
 ROOT = Path(__file__).resolve().parents[1]
 COLUMNS, ROWS = 8, 3
 
@@ -13,8 +15,8 @@ COLUMNS, ROWS = 8, 3
 def prepare(source=ROOT / "MainCharacter.png", output=ROOT / "assets/character.png", preview=False):
     with Image.open(source) as original:
         sheet = original.convert("RGBA")
-    if sheet.width % COLUMNS or sheet.height % ROWS:
-        raise ValueError("Sprite sheet must contain an 8 by 3 grid")
+    if sheet.size != (COLUMNS * FRAME_WIDTH, ROWS * FRAME_HEIGHT):
+        raise ValueError("Sprite sheet must contain 8 by 3 cells of 256 by 256 pixels")
     width, height = sheet.width // COLUMNS, sheet.height // ROWS
     print(f"Source corner: {sheet.getpixel((0, 0))}; extrema: {sheet.getextrema()}")
     for row in range(ROWS):
@@ -38,9 +40,16 @@ def prepare(source=ROOT / "MainCharacter.png", output=ROOT / "assets/character.p
                     continue
                 pixels[x, y] = (r, g, b, 0)
                 queue.extend(((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)))
-            if frame.getbbox() is None:
+            bounds = frame.getbbox()
+            if bounds is None:
                 raise ValueError(f"No character remained at row {row}, column {column}")
-            sheet.paste(frame, box)
+            sprite = frame.crop(bounds)
+            aligned = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+            aligned.paste(sprite, (
+                (width - sprite.width) // 2,
+                height - FRAME_BOTTOM_PADDING - sprite.height,
+            ))
+            sheet.paste(aligned, box)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output)

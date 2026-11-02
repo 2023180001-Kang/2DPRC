@@ -8,10 +8,10 @@ def draw_background(image):
     image.draw(WIDTH / 2, HEIGHT / 2, image.w * scale, image.h * scale)
 
 
-def draw_character(image):
+def draw_character(image, player):
     width = FRAME_WIDTH * CHARACTER_SCALE
     height = FRAME_HEIGHT * CHARACTER_SCALE
     image.clip_composite_draw(
-        0, image.h - FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT,
-        0, "", WIDTH / 2, GROUND_Y + height / 2, width, height,
+        player.frame * FRAME_WIDTH, image.h - FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT,
+        0, "", player.x, player.foot_y + height / 2, width, height,
     )

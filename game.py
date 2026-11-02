@@ -44,6 +44,8 @@ class Player:
         speed = RUN_SPEED if "r" in controls.held else WALK_SPEED
         self.x += controls.direction * speed * dt
         next_state = "WALK" if controls.direction else "IDLE"
+        if controls.direction and "r" in controls.held:
+            next_state = "RUN"
         if next_state != self.state:
             self.state = next_state
             self.animation_time = 0.0

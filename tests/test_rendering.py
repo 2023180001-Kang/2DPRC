@@ -1,20 +1,35 @@
 import unittest
 from unittest.mock import Mock
 
+from PIL import Image
+
 from game import Player
 from rendering import draw_background, draw_character
+from resources import IMAGE_FILES, ROOT
 from settings import CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, HEIGHT, WIDTH
 
 
 class RenderingTests(unittest.TestCase):
-    def test_background_preserves_aspect_ratio(self):
+    def test_new_stage_fills_720p_canvas_and_sets_sidewalk_height(self):
+        self.assertEqual((WIDTH, HEIGHT), (1280, 720))
+        with Image.open(ROOT / IMAGE_FILES["background"]) as background:
+            image = Mock(w=background.width, h=background.height)
+        draw_background(image)
+        x, y, width, height = image.draw.call_args.args
+        self.assertEqual((x, y), (640, 360))
+        self.assertAlmostEqual(width, WIDTH, delta=1)
+        self.assertAlmostEqual(height, HEIGHT, delta=1)
+        self.assertEqual(Player().foot_y, 140)
+
+    def test_background_covers_canvas_preserving_aspect_ratio(self):
         image = Mock(w=2048, h=683)
         draw_background(image)
         x, y, width, height = image.draw.call_args.args
         self.assertEqual((x, y), (WIDTH / 2, HEIGHT / 2))
-        self.assertAlmostEqual(width / height, image.w / image.h)
-        self.assertLessEqual(width, WIDTH)
-        self.assertLessEqual(height, HEIGHT)
+        self.assertAlmostEqual(width / image.w, height / image.h,
+                               delta=1 / min(image.w, image.h))
+        self.assertGreaterEqual(width, WIDTH)
+        self.assertGreaterEqual(height, HEIGHT)
 
     def test_all_frames_clip_inside_sheet(self):
         image = Mock(h=FRAME_HEIGHT * 3)

@@ -7,7 +7,8 @@ FRAME_COUNT = 8
 FRAME_BOTTOM_PADDING = 12
 CHARACTER_SCALE = 0.6
 PLAYER_HALF_WIDTH = FRAME_WIDTH * CHARACTER_SCALE / 2
-GROUND_Y = 55
+# Feet rest on the sidewalk just above the curb in newfirststage.png at 720p.
+GROUND_Y = 140
 ANIMATIONS = {"IDLE": (0, 6), "WALK": (1, 8), "RUN": (2, 12)}
 WALK_SPEED = 180.0
 RUN_SPEED = 320.0

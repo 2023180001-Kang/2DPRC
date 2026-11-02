@@ -1,13 +1,15 @@
 """Rendering helpers; game state remains independent of pico2d."""
 
+from math import ceil
+
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, HEIGHT, WIDTH,
 )
 
 
 def draw_background(image):
-    scale = min(WIDTH / image.w, HEIGHT / image.h)
-    image.draw(WIDTH / 2, HEIGHT / 2, image.w * scale, image.h * scale)
+    scale = max(WIDTH / image.w, HEIGHT / image.h)
+    image.draw(WIDTH / 2, HEIGHT / 2, ceil(image.w * scale), ceil(image.h * scale))
 
 
 def draw_character(image, player):

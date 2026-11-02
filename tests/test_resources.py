@@ -29,7 +29,7 @@ class ResourceTests(unittest.TestCase):
 
         self.assertEqual(resources.ROOT, Path(resources.__file__).resolve().parent)
         self.assertEqual(resources.IMAGE_FILES, {
-            "background": "firststage.png",
+            "background": "newfirststage.png",
             "character": "assets/character.png",
         })
         self.assertEqual(images, {
@@ -61,7 +61,7 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "firststage.png"), str(caught.exception))
+        self.assertIn(str(self.root / "newfirststage.png"), str(caught.exception))
         self.load_image.assert_not_called()
         self.destroy_texture.assert_not_called()
 
@@ -72,7 +72,7 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "firststage.png"), str(caught.exception))
+        self.assertIn(str(self.root / "newfirststage.png"), str(caught.exception))
         self.assertIs(caught.exception.__cause__, error)
         self.destroy_texture.assert_not_called()
 
@@ -84,7 +84,7 @@ class ResourceTests(unittest.TestCase):
                 resources.load_images(self.root)
 
         self.assertIn(str(self.root / "assets/character.png"), str(caught.exception))
-        self.load_image.assert_called_once_with(str(self.root / "firststage.png"))
+        self.load_image.assert_called_once_with(str(self.root / "newfirststage.png"))
         release.assert_called_once()
         self.assertEqual(release.call_args.args[0], {})
         self.assertIsNone(self.background.texture)

@@ -13,7 +13,7 @@ import sdl2
 import main
 from events import poll_events
 from rendering import draw_character
-from resources import ROOT, ResourceError, load_images
+from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import GROUND_Y, PLAYER_HALF_WIDTH, WIDTH
 
 
@@ -113,7 +113,7 @@ def verify():
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
 
     with tempfile.TemporaryDirectory(dir=output) as directory:
-        Image.new("RGBA", (16, 16), "black").save(Path(directory) / "firststage.png")
+        Image.new("RGBA", (16, 16), "black").save(Path(directory) / IMAGE_FILES["background"])
         with patch("main.load_images", side_effect=lambda: load_images(directory)):
             try:
                 main.run(frame_limit=1)

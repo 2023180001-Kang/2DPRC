@@ -6,7 +6,7 @@ import pico2d
 import sdl2
 
 ROOT = Path(__file__).resolve().parent
-IMAGE_FILES = {"background": "firststage.png", "character": "assets/character.png"}
+IMAGE_FILES = {"background": "newfirststage.png", "character": "assets/character.png"}
 
 
 class ResourceError(RuntimeError):

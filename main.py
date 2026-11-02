@@ -1,16 +1,20 @@
 """Run the pico2d movement prototype."""
 
 import argparse
+import sys
 from time import perf_counter, sleep
 
 import pico2d
 
+from resources import ResourceError, load_images
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
 def run(frame_limit=None):
     pico2d.open_canvas(WIDTH, HEIGHT, sync=True)
+    images = {}
     try:
+        images = load_images()
         running = True
         frames = 0
         started = previous = perf_counter()
@@ -32,6 +36,7 @@ def run(frame_limit=None):
         elapsed = perf_counter() - started
         return {"frames": frames, "seconds": elapsed, "fps": frames / elapsed}
     finally:
+        images.clear()
         pico2d.close_canvas()
 
 
@@ -41,6 +46,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.frames is not None and args.frames < 1:
         parser.error("--frames must be positive")
-    result = run(frame_limit=args.frames)
+    try:
+        result = run(frame_limit=args.frames)
+    except ResourceError as error:
+        print(f"Resource error: {error}", file=sys.stderr)
+        sys.exit(1)
     if args.frames is not None:
         print(result)

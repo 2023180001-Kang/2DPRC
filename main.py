@@ -7,6 +7,7 @@ from time import perf_counter, sleep
 import pico2d
 
 from resources import ResourceError, load_images
+from rendering import draw_background
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
@@ -28,6 +29,7 @@ def run(frame_limit=None):
             if not running:
                 break
             pico2d.clear_canvas()
+            draw_background(images["background"])
             pico2d.update_canvas()
             frames += 1
             sleep(max(0.0, 1.0 / TARGET_FPS - (perf_counter() - frame_started)))

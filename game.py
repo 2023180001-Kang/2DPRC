@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from settings import FRAME_COUNT, GROUND_Y, IDLE_FPS, WIDTH
+from settings import FRAME_COUNT, GROUND_Y, IDLE_FPS, WALK_SPEED, WIDTH
 
 
 @dataclass
@@ -33,5 +33,6 @@ class Player:
     def frame(self):
         return int(self.animation_time * IDLE_FPS) % FRAME_COUNT
 
-    def update(self, dt):
+    def update(self, dt, controls):
+        self.x += controls.direction * WALK_SPEED * dt
         self.animation_time += dt

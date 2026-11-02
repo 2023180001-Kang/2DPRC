@@ -34,7 +34,7 @@ def run(frame_limit=None):
                     controls.set_key(key_names.get(event.key), event.type == pico2d.SDL_KEYDOWN)
             if not running:
                 break
-            player.update(dt)
+            player.update(dt, controls)
             pico2d.clear_canvas()
             draw_background(images["background"])
             draw_character(images["character"], player)

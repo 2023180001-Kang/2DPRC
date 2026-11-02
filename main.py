@@ -6,7 +6,7 @@ from time import perf_counter, sleep
 
 import pico2d
 
-from game import Player
+from game import Controls, Player
 from resources import ResourceError, load_images
 from rendering import draw_background, draw_character
 from settings import HEIGHT, TARGET_FPS, WIDTH
@@ -18,6 +18,8 @@ def run(frame_limit=None):
     try:
         images = load_images()
         player = Player()
+        controls = Controls()
+        key_names = {pico2d.SDLK_LEFT: "left", pico2d.SDLK_RIGHT: "right", pico2d.SDLK_r: "r"}
         running = True
         frames = 0
         started = previous = perf_counter()
@@ -28,6 +30,8 @@ def run(frame_limit=None):
             for event in pico2d.get_events():
                 if event.type == pico2d.SDL_QUIT:
                     running = False
+                elif event.type in (pico2d.SDL_KEYDOWN, pico2d.SDL_KEYUP):
+                    controls.set_key(key_names.get(event.key), event.type == pico2d.SDL_KEYDOWN)
             if not running:
                 break
             player.update(dt)

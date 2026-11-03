@@ -1,11 +1,34 @@
 """Pure Python game state, usable in tests without opening a window."""
 
 from dataclasses import dataclass, field
+from random import Random
 
 from settings import (
-    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, JUMP_SPEED, MAX_HEALTH, PLAYER_HALF_WIDTH,
+    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, PLAYER_HALF_WIDTH,
     RUN_SPEED, WALK_SPEED, WIDTH,
 )
+
+
+@dataclass(frozen=True)
+class Item:
+    kind: str
+    x: float
+    foot_y: float = GROUND_Y
+
+
+def spawn_items(rng=None):
+    rng = rng if rng is not None else Random()
+    count = rng.randint(3, 5)
+    kinds = list(ITEM_WIDTHS)
+    kinds += rng.choices(kinds, k=count - len(kinds))
+    rng.shuffle(kinds)
+    width = max(ITEM_WIDTHS.values())
+    # Spaced slots keep items apart and leave the player's starting position clear.
+    slots = [x for x in range(width, WIDTH - width + 1, 2 * width)
+             if abs(x - WIDTH / 2) > PLAYER_HALF_WIDTH + width]
+    positions = rng.sample(slots, count)
+    return [Item(kind, x + rng.uniform(-width / 4, width / 4))
+            for kind, x in zip(kinds, positions)]
 
 
 @dataclass

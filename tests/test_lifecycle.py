@@ -13,8 +13,11 @@ class LifecycleTests(unittest.TestCase):
             "background": Mock(texture=sentinel.background_texture),
             "character": Mock(texture=sentinel.character_texture),
             "heart": Mock(texture=sentinel.heart_texture),
+            "dagger": Mock(texture=sentinel.dagger_texture),
+            "steel_pipe": Mock(texture=sentinel.steel_pipe_texture),
         }
         self.retained_images = tuple(self.images.values())
+        self.textures = {image.texture: image for image in self.retained_images}
         self.order = []
         self.open_canvas = Mock(side_effect=self.open_mock_canvas)
         self.close_canvas = Mock(side_effect=lambda: self.order.append("close"))
@@ -26,6 +29,8 @@ class LifecycleTests(unittest.TestCase):
         self.load_images = Mock(return_value=self.images)
         self.poll_events = Mock(return_value=True)
         self.draw_background = Mock()
+        self.spawn_items = Mock(return_value=sentinel.items)
+        self.draw_items = Mock()
         self.draw_character = Mock()
         self.draw_health = Mock()
         patches = [
@@ -46,7 +51,8 @@ class LifecycleTests(unittest.TestCase):
             patch.multiple(
                 main, load_images=self.load_images, poll_events=self.poll_events,
                 draw_background=self.draw_background, draw_character=self.draw_character,
-                draw_health=self.draw_health,
+                draw_health=self.draw_health, spawn_items=self.spawn_items,
+                draw_items=self.draw_items,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
             ),
         ]
@@ -66,25 +72,23 @@ class LifecycleTests(unittest.TestCase):
         core.audio_on = True
 
     def destroy_mock_texture(self, texture):
-        image = {
-            sentinel.background_texture: self.retained_images[0],
-            sentinel.character_texture: self.retained_images[1],
-            sentinel.heart_texture: self.retained_images[2],
-        }[texture]
+        image = self.textures[texture]
         self.assertIsNone(image.texture)
         self.assertIs(core.renderer, sentinel.renderer)
         self.order.append("destroy")
 
     def assert_images_released_before_close(self):
-        self.assertEqual(self.order, ["destroy", "destroy", "destroy", "close"])
+        self.assertEqual(self.order, ["destroy"] * len(self.retained_images) + ["close"])
         self.assertEqual(self.images, {})
         self.assertTrue(all(image.texture is None for image in self.retained_images))
-        self.assertEqual(self.destroy_texture.call_count, 3)
+        self.assertEqual(self.destroy_texture.call_count, len(self.retained_images))
         self.close_canvas.assert_called_once_with()
         self.assert_core_reset()
 
     def test_normal_frame_releases_images_before_closing_canvas(self):
         drawing = Mock()
+        drawing.attach_mock(self.draw_background, "background")
+        drawing.attach_mock(self.draw_items, "items")
         drawing.attach_mock(self.draw_character, "character")
         drawing.attach_mock(self.draw_health, "health")
         drawing.attach_mock(self.update_canvas, "update")
@@ -101,15 +105,31 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(title)
         self.clear_canvas.assert_called_once_with()
         self.draw_background.assert_called_once_with(self.retained_images[0])
+        self.spawn_items.assert_called_once_with()
         player = self.draw_character.call_args.args[1]
         self.assertIsInstance(player, main.Player)
         self.assertEqual(player.health, 3)
         self.assertEqual(drawing.mock_calls, [
+            call.background(self.retained_images[0]),
+            call.items(self.images, sentinel.items),
             call.character(self.retained_images[1], player),
             call.health(self.retained_images[2], player),
             call.update(),
         ])
         self.update_canvas.assert_called_once_with()
+        self.assert_images_released_before_close()
+
+    def test_items_spawn_once_after_player_initialization_across_three_frames(self):
+        initialization = Mock()
+        with patch.object(main, "Player", wraps=main.Player) as player_class:
+            initialization.attach_mock(player_class, "player")
+            initialization.attach_mock(self.spawn_items, "spawn")
+
+            result = main.run(frame_limit=3)
+
+        self.assertEqual(result["frames"], 3)
+        self.assertEqual(initialization.mock_calls, [call.player(), call.spawn()])
+        self.assertEqual(self.draw_items.call_args_list, [call(self.images, sentinel.items)] * 3)
         self.assert_images_released_before_close()
 
     def test_drawing_traceback_retains_image_but_texture_is_released(self):
@@ -197,13 +217,48 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.order, ["close"])
         self.assert_core_reset()
 
+    def test_missing_or_corrupt_items_release_previous_textures_before_close(self):
+        self.load_images.side_effect = resources.load_images
+        textures = list(self.textures)
+        for index, name in enumerate(("dagger", "steel_pipe"), start=3):
+            for corrupt in (False, True):
+                with self.subTest(item=name, corrupt=corrupt):
+                    for texture, image in self.textures.items():
+                        image.texture = texture
+                    self.order.clear()
+                    self.destroy_texture.reset_mock()
+                    self.close_canvas.reset_mock()
+                    error = OSError("mock item decode failure")
+                    main.pico2d.load_image.side_effect = list(self.retained_images[:index]) + (
+                        [error] if corrupt else []
+                    )
+                    with patch.object(
+                        resources.Path, "is_file", return_value=True,
+                        side_effect=None if corrupt else [True] * index + [False],
+                    ):
+                        with self.assertRaises(resources.ResourceError) as caught:
+                            main.run(frame_limit=1)
+
+                    self.assertIn(resources.IMAGE_FILES[name], str(caught.exception))
+                    if corrupt:
+                        self.assertIs(caught.exception.__cause__, error)
+                    self.assertEqual(self.destroy_texture.call_args_list, [
+                        call(texture) for texture in textures[:index]
+                    ])
+                    self.assertEqual(self.order, ["destroy"] * index + ["close"])
+                    self.close_canvas.assert_called_once_with()
+                    self.spawn_items.assert_not_called()
+                    self.assert_core_reset()
+
     def test_quit_before_first_frame_still_releases_images(self):
         self.poll_events.return_value = False
 
         result = main.run(frame_limit=1)
 
         self.assertEqual(result["frames"], 0)
+        self.spawn_items.assert_called_once_with()
         self.draw_background.assert_not_called()
+        self.draw_items.assert_not_called()
         self.draw_character.assert_not_called()
         self.draw_health.assert_not_called()
         self.assert_images_released_before_close()

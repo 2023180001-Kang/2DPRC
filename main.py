@@ -8,9 +8,9 @@ import pico2d
 import pico2d.pico2d as core
 
 from events import poll_events
-from game import Controls, Player
+from game import Controls, Player, spawn_items
 from resources import ResourceError, load_images, release_images
-from rendering import draw_background, draw_character, draw_health
+from rendering import draw_background, draw_character, draw_health, draw_items
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
@@ -27,6 +27,7 @@ def run(frame_limit=None):
         core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump")
         images = load_images()
         player = Player()
+        items = spawn_items()
         controls = Controls()
         running = True
         frames = 0
@@ -41,6 +42,7 @@ def run(frame_limit=None):
             player.update(dt, controls)
             pico2d.clear_canvas()
             draw_background(images["background"])
+            draw_items(images, items)
             draw_character(images["character"], player)
             draw_health(images["heart"], player)
             pico2d.update_canvas()

@@ -12,9 +12,16 @@ class ResourceTests(unittest.TestCase):
         self.background = Mock(texture=sentinel.background_texture)
         self.character = Mock(texture=sentinel.character_texture)
         self.heart = Mock(texture=sentinel.heart_texture)
+        self.images = {
+            "background": self.background,
+            "character": self.character,
+            "heart": self.heart,
+            "dagger": Mock(texture=sentinel.dagger_texture),
+            "steel_pipe": Mock(texture=sentinel.steel_pipe_texture),
+        }
         loader = patch.object(
             resources.pico2d, "load_image",
-            side_effect=[self.background, self.character, self.heart],
+            side_effect=list(self.images.values()),
         )
         self.load_image = loader.start()
         self.addCleanup(loader.stop)
@@ -33,11 +40,11 @@ class ResourceTests(unittest.TestCase):
             "background": "newfirststage.png",
             "character": "assets/character.png",
             "heart": "Heart.png",
+            "dagger": "dagger_item_pico2d.png",
+            "steel_pipe": "steel_pipe_item_pico2d.png",
         })
-        self.assertEqual(list(resources.IMAGE_FILES), ["background", "character", "heart"])
-        self.assertEqual(images, {
-            "background": self.background, "character": self.character, "heart": self.heart,
-        })
+        self.assertEqual(list(resources.IMAGE_FILES), list(self.images))
+        self.assertEqual(images, self.images)
         paths = [resources.ROOT / name for name in resources.IMAGE_FILES.values()]
         self.assertEqual(self.is_file.call_args_list, [call(path) for path in paths])
         self.assertEqual(self.load_image.call_args_list, [call(str(path)) for path in paths])
@@ -47,16 +54,15 @@ class ResourceTests(unittest.TestCase):
         for root in (self.root, str(self.root)):
             with self.subTest(root=root):
                 self.load_image.reset_mock(side_effect=True)
-                self.load_image.side_effect = [self.background, self.character, self.heart]
+                self.load_image.side_effect = list(self.images.values())
                 images = resources.load_images(root)
 
                 self.assertEqual(set(images), set(resources.IMAGE_FILES))
                 self.assertEqual(self.load_image.call_args_list, [
                     call(str(self.root / name)) for name in resources.IMAGE_FILES.values()
                 ])
-                self.assertIs(self.background.texture, sentinel.background_texture)
-                self.assertIs(self.character.texture, sentinel.character_texture)
-                self.assertIs(self.heart.texture, sentinel.heart_texture)
+                for name, image in self.images.items():
+                    self.assertIs(image.texture, getattr(sentinel, name + "_texture"))
                 self.destroy_texture.assert_not_called()
 
     def test_missing_file_error_includes_path(self):
@@ -142,18 +148,42 @@ class ResourceTests(unittest.TestCase):
         self.assertIsNone(self.background.texture)
         self.assertIsNone(self.character.texture)
 
+    def test_missing_or_corrupt_items_release_previous_images(self):
+        originals = [image.texture for image in self.images.values()]
+        fixtures = list(self.images.values())
+        for index, name in enumerate(("dagger", "steel_pipe"), start=3):
+            for corrupt in (False, True):
+                with self.subTest(item=name, corrupt=corrupt):
+                    for image, texture in zip(fixtures, originals):
+                        image.texture = texture
+                    self.destroy_texture.reset_mock()
+                    self.load_image.reset_mock(side_effect=True)
+                    self.is_file.reset_mock()
+                    error = OSError("mock item decode failure")
+                    self.is_file.side_effect = None if corrupt else [True] * index + [False]
+                    self.load_image.side_effect = fixtures[:index] + ([error] if corrupt else [])
+
+                    with self.assertRaises(resources.ResourceError) as caught:
+                        resources.load_images(self.root)
+
+                    path = self.root / resources.IMAGE_FILES[name]
+                    self.assertIn(str(path), str(caught.exception))
+                    if corrupt:
+                        self.assertIs(caught.exception.__cause__, error)
+                    paths = list(resources.IMAGE_FILES.values())[:index + int(corrupt)]
+                    self.assertEqual(self.load_image.call_args_list, [
+                        call(str(self.root / filename)) for filename in paths
+                    ])
+                    self.assertEqual(self.destroy_texture.call_args_list, [
+                        call(texture) for texture in originals[:index]
+                    ])
+                    self.assertTrue(all(image.texture is None for image in fixtures[:index]))
+                    for image, texture in zip(fixtures[index:], originals[index:]):
+                        self.assertIs(image.texture, texture)
+
     def test_release_nulls_each_texture_before_destroy_and_clears_images(self):
-        images = {
-            "background": self.background,
-            "character": self.character,
-            "heart": self.heart,
-            "already_released": Mock(texture=None),
-        }
-        originals = {
-            sentinel.background_texture: self.background,
-            sentinel.character_texture: self.character,
-            sentinel.heart_texture: self.heart,
-        }
+        images = dict(self.images, already_released=Mock(texture=None))
+        originals = {image.texture: image for image in self.images.values()}
 
         def destroy(texture):
             self.assertIsNone(originals[texture].texture)
@@ -163,8 +193,7 @@ class ResourceTests(unittest.TestCase):
 
         self.assertEqual(images, {})
         self.assertCountEqual(self.destroy_texture.call_args_list, [
-            call(sentinel.background_texture), call(sentinel.character_texture),
-            call(sentinel.heart_texture),
+            call(texture) for texture in originals
         ])
         self.assertTrue(all(image.texture is None for image in originals.values()))
 

@@ -1,8 +1,16 @@
 from random import Random
 import unittest
+from unittest.mock import Mock
 
-from game import spawn_items
-from settings import GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH, WIDTH
+from PIL import Image
+
+from game import Item, spawn_items
+from rendering import draw_items
+from resources import IMAGE_FILES, ROOT
+from settings import (
+    CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
+    GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH, WIDTH,
+)
 
 
 class ItemTests(unittest.TestCase):
@@ -38,3 +46,43 @@ class ItemTests(unittest.TestCase):
         layouts = [tuple(spawn_items(rng)) for _ in range(20)]
         self.assertGreater(len(set(layouts)), 1)
         self.assertGreater(len({len(items) for items in layouts}), 1)
+
+    def test_rendering_uses_correct_image_aspect_ratio_and_floor(self):
+        for kind, width in ITEM_WIDTHS.items():
+            with self.subTest(kind=kind):
+                with Image.open(ROOT / IMAGE_FILES[kind]) as source:
+                    image = Mock(w=source.width, h=source.height)
+                    self.assertEqual(source.convert("RGBA").getchannel("A").getextrema()[0], 0)
+                item = Item(kind, 200)
+                draw_items({kind: image}, [item])
+                image.draw.assert_called_once()
+                x, y, drawn_width, height = image.draw.call_args.args
+                self.assertEqual((x, drawn_width), (item.x, width))
+                self.assertAlmostEqual(drawn_width / height, image.w / image.h)
+                self.assertAlmostEqual(y - height / 2, GROUND_Y)
+
+    def test_items_are_smaller_than_visible_character_in_every_pose(self):
+        sizes = []
+        with Image.open(ROOT / "assets/character.png") as sheet:
+            for row in range(FRAME_ROWS):
+                for frame in range(FRAME_COUNT):
+                    bounds = sheet.crop((frame * FRAME_WIDTH, row * FRAME_HEIGHT,
+                                         (frame + 1) * FRAME_WIDTH, (row + 1) * FRAME_HEIGHT)).getbbox()
+                    sizes.append(min(bounds[2] - bounds[0], bounds[3] - bounds[1]) * CHARACTER_SCALE)
+        for kind, width in ITEM_WIDTHS.items():
+            with self.subTest(kind=kind), Image.open(ROOT / IMAGE_FILES[kind]) as source:
+                height = width * source.height / source.width
+                self.assertLess(max(width, height), min(sizes))
+
+    def test_repeated_rendering_does_not_move_or_respawn_items(self):
+        items = spawn_items(Random(17))
+        original = tuple(items)
+        images = {kind: Mock(w=900, h=300) for kind in ITEM_WIDTHS}
+        draw_items(images, items)
+        calls = {kind: image.draw.call_args_list[:] for kind, image in images.items()}
+        for image in images.values():
+            image.reset_mock()
+        draw_items(images, items)
+        self.assertEqual(tuple(items), original)
+        for kind, image in images.items():
+            self.assertEqual(image.draw.call_args_list, calls[kind])

@@ -4,7 +4,7 @@ from math import ceil
 
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
-    HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, MAX_HEALTH, WIDTH,
+    HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, MAX_HEALTH, WIDTH,
 )
 
 
@@ -30,3 +30,11 @@ def draw_health(image, player):
         x = WIDTH - HUD_MARGIN - HEART_SIZE / 2 - index * (HEART_SIZE + HEART_GAP)
         y = HEIGHT - HUD_MARGIN - HEART_SIZE / 2
         image.clip_draw(0, 0, image.w // 2, image.h, x, y, HEART_SIZE, HEART_SIZE)
+
+
+def draw_items(images, items):
+    for item in items:
+        image = images[item.kind]
+        width = ITEM_WIDTHS[item.kind]
+        height = width * image.h / image.w
+        image.draw(item.x, item.foot_y + height / 2, width, height)

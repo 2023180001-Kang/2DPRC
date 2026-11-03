@@ -204,14 +204,21 @@ def verify():
     with tempfile.TemporaryDirectory(dir=output) as directory:
         Image.new("RGBA", (16, 16), "black").save(Path(directory) / IMAGE_FILES["background"])
         with patch("main.load_images", side_effect=lambda: load_images(directory)):
-            try:
-                main.run(frame_limit=1)
-            except ResourceError as error:
-                assert "character.png" in str(error)
-            else:
-                raise AssertionError("Missing character must fail")
+            for missing in ("character", "heart"):
+                try:
+                    main.run(frame_limit=1)
+                except ResourceError as error:
+                    assert Path(IMAGE_FILES[missing]).name in str(error)
+                else:
+                    raise AssertionError(f"Missing {missing} must fail")
+                assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+                if missing == "character":
+                    character = Path(directory) / IMAGE_FILES["character"]
+                    character.parent.mkdir()
+                    Image.new("RGBA", (16, 16), "white").save(character)
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"scripted_input": "PASS", "window_close": "PASS", "partial_load_cleanup": "PASS",
+                   "heart_load_cleanup": "PASS", "health_hud": "PASS",
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
                    "jump": verify_jumping(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")

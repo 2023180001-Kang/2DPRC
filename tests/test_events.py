@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 import sdl2
 
-from events import poll_events
+from events import KEY_NAMES, poll_events
 from game import Controls, Player
-from settings import GROUND_Y
+from settings import GROUND_Y, JUMP_DURATION
 
 
 class EventTests(unittest.TestCase):
@@ -22,10 +22,10 @@ class EventTests(unittest.TestCase):
         memmove(pointer, byref(self.queue.pop(0)), sizeof(sdl2.SDL_Event))
         return 1
 
-    def key(self, down=True, repeat=False):
+    def key(self, down=True, repeat=False, keycode=sdl2.SDLK_SPACE):
         event = sdl2.SDL_Event()
         event.type = sdl2.SDL_KEYDOWN if down else sdl2.SDL_KEYUP
-        event.key.keysym.sym = sdl2.SDLK_SPACE
+        event.key.keysym.sym = keycode
         event.key.repeat = repeat
         self.queue.append(event)
 
@@ -45,19 +45,72 @@ class EventTests(unittest.TestCase):
         self.assertNotIn("space", controls.held)
 
     def test_repeated_sdl_keydown_does_not_request_jump(self):
-        controls = Controls()
-        self.key(repeat=True)
-        poll_events(controls)
-        self.assertFalse(controls.jump_requested)
-        self.assertFalse(controls.held)
+        for keycode in (sdl2.SDLK_SPACE, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
+            with self.subTest(keycode=keycode):
+                controls = Controls()
+                self.key(repeat=True, keycode=keycode)
+                poll_events(controls)
+                self.assertFalse(controls.jump_requested)
+                self.assertFalse(controls.held)
+                self.key(keycode=keycode)
+                poll_events(controls)
+                controls.jump_requested = False
+                for _ in range(3):
+                    self.key(repeat=True, keycode=keycode)
+                poll_events(controls)
+                self.assertEqual(controls.held, {KEY_NAMES[keycode]})
+                self.assertFalse(controls.jump_requested)
+                self.key(down=False, keycode=keycode)
+                poll_events(controls)
+                self.assertFalse(controls.held)
+                self.assertIs(controls.running, False)
+
+    def test_shift_mapping_and_releases_in_either_order(self):
+        self.assertEqual(KEY_NAMES[sdl2.SDLK_LSHIFT], "lshift")
+        self.assertEqual(KEY_NAMES[sdl2.SDLK_RSHIFT], "rshift")
+        self.assertNotIn(sdl2.SDLK_r, KEY_NAMES)
+        self.assertNotIn("r", KEY_NAMES.values())
+        for first, last in ((sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT),
+                            (sdl2.SDLK_RSHIFT, sdl2.SDLK_LSHIFT)):
+            with self.subTest(first=first):
+                controls, player = Controls(), Player()
+                for keycode in (sdl2.SDLK_r, sdl2.SDLK_RIGHT):
+                    self.key(keycode=keycode)
+                poll_events(controls)
+                player.update(0, controls)
+                self.assertEqual(controls.held, {"right"})
+                self.assertEqual(player.state, "WALK")
+                for keycode in (first, last):
+                    self.key(keycode=keycode)
+                poll_events(controls)
+                self.assertEqual(controls.held, {"right", "lshift", "rshift"})
+                self.assertIs(controls.running, True)
+                self.key(down=False, keycode=first)
+                poll_events(controls)
+                player.update(0, controls)
+                self.assertEqual(controls.held, {"right", KEY_NAMES[last]})
+                self.assertIs(controls.running, True)
+                self.assertEqual(player.state, "RUN")
+                self.key(down=False, keycode=last)
+                poll_events(controls)
+                player.update(0, controls)
+                self.assertEqual(controls.held, {"right"})
+                self.assertIs(controls.running, False)
+                self.assertEqual(player.state, "WALK")
 
     def test_focus_loss_clears_pending_jump_and_held_keys(self):
-        controls = Controls({"left", "r"})
+        controls = Controls()
+        for keycode in (sdl2.SDLK_LEFT, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
+            self.key(keycode=keycode)
         self.key()
+        poll_events(controls)
+        self.assertEqual(controls.held, {"left", "lshift", "rshift", "space"})
+        self.assertIs(controls.running, True)
         self.focus(False)
         poll_events(controls)
         self.assertFalse(controls.jump_requested)
         self.assertFalse(controls.held)
+        self.assertIs(controls.running, False)
         player = Player()
         player.update(0.1, controls)
         self.assertTrue(player.grounded)
@@ -69,7 +122,7 @@ class EventTests(unittest.TestCase):
         player.update(0.1, controls)
         self.focus(False)
         poll_events(controls)
-        player.update(0.7, controls)
+        player.update(JUMP_DURATION - 0.1, controls)
         self.assertEqual((player.foot_y, player.state), (GROUND_Y, "IDLE"))
 
     def test_space_requires_focus_and_works_after_regaining_focus(self):

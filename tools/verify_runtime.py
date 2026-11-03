@@ -14,7 +14,7 @@ import main
 from events import poll_events
 from rendering import draw_character, draw_health
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
-from settings import GROUND_Y, PLAYER_HALF_WIDTH, WIDTH
+from settings import GRAVITY, GROUND_Y, JUMP_SPEED, PLAYER_HALF_WIDTH, WIDTH
 
 
 def push(kind, value=None):
@@ -23,6 +23,7 @@ def push(kind, value=None):
         event.type = sdl2.SDL_KEYDOWN if kind == "down" else sdl2.SDL_KEYUP
         event.key.windowID = sdl2.SDL_GetWindowID(core.window)
         event.key.keysym.sym = {"left": sdl2.SDLK_LEFT, "right": sdl2.SDLK_RIGHT,
+                               "lshift": sdl2.SDLK_LSHIFT, "rshift": sdl2.SDLK_RSHIFT,
                                "r": sdl2.SDLK_r, "space": sdl2.SDLK_SPACE}[value]
     elif kind == "quit":
         event.type = sdl2.SDL_QUIT
@@ -55,13 +56,13 @@ def verify_jumping(output):
         1: [("down", "space"), ("up", "space")],
         8: [("down", "space")],
         9: [("up", "space")],
-        60: [("down", "right"), ("down", "r"), ("down", "space")],
-        65: [("up", "right"), ("down", "left")],
-        121: [("up", "space")],
-        130: [("down", "space"), ("up", "space")],
-        135: [("focus", False)],
-        136: [("focus", True)],
-        191: [("quit", None)],
+        100: [("down", "right"), ("down", "lshift"), ("down", "space")],
+        105: [("up", "right"), ("down", "left")],
+        191: [("up", "space")],
+        200: [("down", "space"), ("up", "space")],
+        205: [("focus", False)],
+        206: [("focus", True)],
+        291: [("quit", None)],
     }
     records, screenshots = [], []
     tick = -1
@@ -85,17 +86,17 @@ def verify_jumping(output):
         draw_health(image, player)
         assert player.health == 3
         shot = None
-        if tick < 60 and player.state == "JUMP":
+        if tick < 100 and player.state == "JUMP":
             if player.vertical_speed > 0:
                 shot = "jump-rise"
             elif "jump-apex" not in screenshots:
                 shot = "jump-apex"
-            elif player.foot_y < GROUND_Y + 48:
+            elif player.foot_y < GROUND_Y + 96:
                 shot = "jump-fall"
-        elif tick < 60 and "jump-rise" in screenshots:
+        elif tick < 100 and "jump-rise" in screenshots:
             shot = "jump-land"
-        if tick in (62, 70):
-            shot = "jump-run-right" if tick == 62 else "jump-run-left"
+        if tick in (102, 110):
+            shot = "jump-run-right" if tick == 102 else "jump-run-left"
         if shot and shot not in screenshots:
             capture(output / f"{shot}.png")
             screenshots.append(shot)
@@ -103,16 +104,18 @@ def verify_jumping(output):
     with (patch("main.poll_events", side_effect=feed),
           patch("main.draw_character", side_effect=observe),
           patch("main.draw_health", side_effect=observe_health)):
-        result = main.run(frame_limit=210)
-    assert result["frames"] == 191, result
-    for tick, state in {0: "IDLE", 1: "JUMP", 8: "JUMP", 55: "IDLE", 60: "JUMP",
-                        65: "JUMP", 120: "RUN", 130: "JUMP", 135: "JUMP", 190: "IDLE"}.items():
+        result = main.run(frame_limit=310)
+    assert result["frames"] == 291, result
+    for tick, state in {0: "IDLE", 1: "JUMP", 8: "JUMP", 90: "IDLE", 100: "JUMP",
+                        105: "JUMP", 190: "RUN", 200: "JUMP", 205: "JUMP", 290: "IDLE"}.items():
         assert records[tick]["state"] == state, (tick, records[tick])
-    assert records[65]["facing"] == -1
-    assert records[65]["frame"] >= records[64]["frame"]
-    assert records[55]["foot_y"] == records[120]["foot_y"] == records[190]["foot_y"] == GROUND_Y
+    assert records[105]["facing"] == -1
+    assert records[105]["frame"] >= records[104]["frame"]
+    assert records[90]["foot_y"] == records[190]["foot_y"] == records[290]["foot_y"] == GROUND_Y
     assert all(record["row"] == 3 for record in records if record["state"] == "JUMP")
-    assert all(GROUND_Y <= record["foot_y"] <= GROUND_Y + 96 + 1e-6 for record in records)
+    assert abs(JUMP_SPEED ** 2 / (2 * GRAVITY) - 192) < 1e-6
+    assert all(GROUND_Y <= record["foot_y"] <= GROUND_Y + 192 + 1e-6 for record in records)
+    assert max(record["foot_y"] for record in records) >= GROUND_Y + 190
     assert all(PLAYER_HALF_WIDTH <= record["x"] <= WIDTH - PLAYER_HALF_WIDTH for record in records)
     assert len(screenshots) == 6, screenshots
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
@@ -127,11 +130,17 @@ def verify():
     actions = {
         0: [("focus", True)],
         1: [("down", "right")],
-        31: [("down", "r")],
-        182: [("up", "r")],
+        10: [("down", "r")],
+        11: [("up", "r")],
+        31: [("down", "lshift")],
+        40: [("down", "rshift")],
+        41: [("up", "lshift")],
+        182: [("up", "rshift")],
         183: [("up", "right")],
-        184: [("down", "r")],
+        184: [("down", "rshift")],
         185: [("down", "left")],
+        200: [("down", "lshift")],
+        201: [("up", "rshift")],
         422: [("down", "right")],
         423: [("up", "left")],
         450: [("focus", False)],
@@ -169,8 +178,10 @@ def verify():
           patch("main.draw_health", side_effect=observe_health)):
         result = main.run(frame_limit=500)
 
-    expected = {0: ("IDLE", 1), 1: ("WALK", 1), 31: ("RUN", 1), 182: ("WALK", 1),
+    expected = {0: ("IDLE", 1), 1: ("WALK", 1), 10: ("WALK", 1), 11: ("WALK", 1),
+                31: ("RUN", 1), 40: ("RUN", 1), 41: ("RUN", 1), 182: ("WALK", 1),
                 183: ("IDLE", 1), 184: ("IDLE", 1), 185: ("RUN", -1),
+                200: ("RUN", -1), 201: ("RUN", -1),
                 422: ("IDLE", -1), 423: ("RUN", 1), 450: ("IDLE", 1),
                 451: ("WALK", -1), 481: ("IDLE", -1)}
     assert result["frames"] == 482, result

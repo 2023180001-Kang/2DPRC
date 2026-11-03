@@ -15,7 +15,7 @@ class Controls:
     jump_requested: bool = False
 
     def set_key(self, key, down):
-        if key not in {"left", "right", "r", "space"}:
+        if key not in {"left", "right", "lshift", "rshift", "space"}:
             return
         if down and self.focused:
             if key == "space" and key not in self.held:
@@ -27,6 +27,10 @@ class Controls:
     @property
     def direction(self):
         return int("right" in self.held) - int("left" in self.held)
+
+    @property
+    def running(self):
+        return bool(self.held & {"lshift", "rshift"})
 
 
 @dataclass
@@ -45,7 +49,7 @@ class Player:
 
     @property
     def frame(self):
-        frame = int(self.animation_time * ANIMATIONS[self.state][1])
+        frame = int(self.animation_time * ANIMATIONS[self.state][1] + 1e-9)
         return min(frame, FRAME_COUNT - 1) if self.state == "JUMP" else frame % FRAME_COUNT
 
     @property
@@ -67,11 +71,11 @@ class Player:
 
         if controls.direction:
             self.facing = controls.direction
-        speed = RUN_SPEED if "r" in controls.held else WALK_SPEED
+        speed = RUN_SPEED if controls.running else WALK_SPEED
         self.x += controls.direction * speed * dt
         self.x = max(PLAYER_HALF_WIDTH, min(WIDTH - PLAYER_HALF_WIDTH, self.x))
         next_state = "WALK" if controls.direction else "IDLE"
-        if controls.direction and "r" in controls.held:
+        if controls.direction and controls.running:
             next_state = "RUN"
         if not self.grounded:
             next_state = "JUMP"

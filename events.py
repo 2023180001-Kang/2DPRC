@@ -5,7 +5,8 @@ from ctypes import byref
 import sdl2
 
 KEY_NAMES = {
-    sdl2.SDLK_LEFT: "left", sdl2.SDLK_RIGHT: "right", sdl2.SDLK_r: "r",
+    sdl2.SDLK_LEFT: "left", sdl2.SDLK_RIGHT: "right",
+    sdl2.SDLK_LSHIFT: "lshift", sdl2.SDLK_RSHIFT: "rshift",
     sdl2.SDLK_SPACE: "space",
 }
 

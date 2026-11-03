@@ -12,7 +12,7 @@ import sdl2
 
 import main
 from events import poll_events
-from rendering import draw_character
+from rendering import draw_character, draw_health
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import GROUND_Y, PLAYER_HALF_WIDTH, WIDTH
 
@@ -80,6 +80,10 @@ def verify_jumping(output):
         records.append({"state": player.state, "foot_y": player.foot_y,
                         "vertical_speed": player.vertical_speed, "row": player.row,
                         "frame": player.frame, "x": player.x, "facing": player.facing})
+
+    def observe_health(image, player):
+        draw_health(image, player)
+        assert player.health == 3
         shot = None
         if tick < 60 and player.state == "JUMP":
             if player.vertical_speed > 0:
@@ -96,7 +100,9 @@ def verify_jumping(output):
             capture(output / f"{shot}.png")
             screenshots.append(shot)
 
-    with patch("main.poll_events", side_effect=feed), patch("main.draw_character", side_effect=observe):
+    with (patch("main.poll_events", side_effect=feed),
+          patch("main.draw_character", side_effect=observe),
+          patch("main.draw_health", side_effect=observe_health)):
         result = main.run(frame_limit=210)
     assert result["frames"] == 191, result
     for tick, state in {0: "IDLE", 1: "JUMP", 8: "JUMP", 55: "IDLE", 60: "JUMP",
@@ -151,10 +157,16 @@ def verify():
         draw_character(image, player)
         records.append({"tick": tick, "state": player.state, "x": player.x,
                         "facing": player.facing, "frame": player.frame, "foot_y": player.foot_y})
+
+    def observe_health(image, player):
+        draw_health(image, player)
+        assert player.health == 3
         if tick in shots:
             capture(output / f"{shots[tick]}.png")
 
-    with patch("main.poll_events", side_effect=feed), patch("main.draw_character", side_effect=observe):
+    with (patch("main.poll_events", side_effect=feed),
+          patch("main.draw_character", side_effect=observe),
+          patch("main.draw_health", side_effect=observe_health)):
         result = main.run(frame_limit=500)
 
     expected = {0: ("IDLE", 1), 1: ("WALK", 1), 31: ("RUN", 1), 182: ("WALK", 1),

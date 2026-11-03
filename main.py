@@ -10,7 +10,7 @@ import pico2d.pico2d as core
 from events import poll_events
 from game import Controls, Player
 from resources import ResourceError, load_images, release_images
-from rendering import draw_background, draw_character
+from rendering import draw_background, draw_character, draw_health
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
@@ -42,6 +42,7 @@ def run(frame_limit=None):
             pico2d.clear_canvas()
             draw_background(images["background"])
             draw_character(images["character"], player)
+            draw_health(images["heart"], player)
             pico2d.update_canvas()
             frames += 1
             sleep(max(0.0, 1.0 / TARGET_FPS - (perf_counter() - frame_started)))

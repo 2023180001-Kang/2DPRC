@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch, sentinel
+from unittest.mock import Mock, call, patch, sentinel
 
 import main
 import pico2d.pico2d as core
@@ -12,6 +12,7 @@ class LifecycleTests(unittest.TestCase):
         self.images = {
             "background": Mock(texture=sentinel.background_texture),
             "character": Mock(texture=sentinel.character_texture),
+            "heart": Mock(texture=sentinel.heart_texture),
         }
         self.retained_images = tuple(self.images.values())
         self.order = []
@@ -26,6 +27,7 @@ class LifecycleTests(unittest.TestCase):
         self.poll_events = Mock(return_value=True)
         self.draw_background = Mock()
         self.draw_character = Mock()
+        self.draw_health = Mock()
         patches = [
             patch.multiple(
                 core, window=sentinel.stale_window, renderer=sentinel.stale_renderer,
@@ -44,6 +46,7 @@ class LifecycleTests(unittest.TestCase):
             patch.multiple(
                 main, load_images=self.load_images, poll_events=self.poll_events,
                 draw_background=self.draw_background, draw_character=self.draw_character,
+                draw_health=self.draw_health,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
             ),
         ]
@@ -66,20 +69,26 @@ class LifecycleTests(unittest.TestCase):
         image = {
             sentinel.background_texture: self.retained_images[0],
             sentinel.character_texture: self.retained_images[1],
+            sentinel.heart_texture: self.retained_images[2],
         }[texture]
         self.assertIsNone(image.texture)
         self.assertIs(core.renderer, sentinel.renderer)
         self.order.append("destroy")
 
     def assert_images_released_before_close(self):
-        self.assertEqual(self.order, ["destroy", "destroy", "close"])
+        self.assertEqual(self.order, ["destroy", "destroy", "destroy", "close"])
         self.assertEqual(self.images, {})
         self.assertTrue(all(image.texture is None for image in self.retained_images))
-        self.assertEqual(self.destroy_texture.call_count, 2)
+        self.assertEqual(self.destroy_texture.call_count, 3)
         self.close_canvas.assert_called_once_with()
         self.assert_core_reset()
 
     def test_normal_frame_releases_images_before_closing_canvas(self):
+        drawing = Mock()
+        drawing.attach_mock(self.draw_character, "character")
+        drawing.attach_mock(self.draw_health, "health")
+        drawing.attach_mock(self.update_canvas, "update")
+
         result = main.run(frame_limit=1)
 
         self.assertEqual(result["frames"], 1)
@@ -91,6 +100,15 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsInstance(title, bytes)
         self.assertTrue(title)
         self.clear_canvas.assert_called_once_with()
+        self.draw_background.assert_called_once_with(self.retained_images[0])
+        player = self.draw_character.call_args.args[1]
+        self.assertIsInstance(player, main.Player)
+        self.assertEqual(player.health, 3)
+        self.assertEqual(drawing.mock_calls, [
+            call.character(self.retained_images[1], player),
+            call.health(self.retained_images[2], player),
+            call.update(),
+        ])
         self.update_canvas.assert_called_once_with()
         self.assert_images_released_before_close()
 
@@ -187,6 +205,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result["frames"], 0)
         self.draw_background.assert_not_called()
         self.draw_character.assert_not_called()
+        self.draw_health.assert_not_called()
         self.assert_images_released_before_close()
 
 

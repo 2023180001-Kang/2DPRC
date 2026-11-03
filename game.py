@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 from settings import (
-    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, JUMP_SPEED, PLAYER_HALF_WIDTH,
+    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, JUMP_SPEED, MAX_HEALTH, PLAYER_HALF_WIDTH,
     RUN_SPEED, WALK_SPEED, WIDTH,
 )
 
@@ -37,6 +37,7 @@ class Player:
     facing: int = 1
     animation_time: float = 0.0
     vertical_speed: float = 0.0
+    health: int = MAX_HEALTH
 
     @property
     def grounded(self):

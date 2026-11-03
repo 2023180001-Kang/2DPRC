@@ -11,9 +11,10 @@ class ResourceTests(unittest.TestCase):
         self.root = resources.ROOT / "mock-resources"
         self.background = Mock(texture=sentinel.background_texture)
         self.character = Mock(texture=sentinel.character_texture)
+        self.heart = Mock(texture=sentinel.heart_texture)
         loader = patch.object(
             resources.pico2d, "load_image",
-            side_effect=[self.background, self.character],
+            side_effect=[self.background, self.character, self.heart],
         )
         self.load_image = loader.start()
         self.addCleanup(loader.stop)
@@ -31,9 +32,11 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(resources.IMAGE_FILES, {
             "background": "newfirststage.png",
             "character": "assets/character.png",
+            "heart": "Heart.png",
         })
+        self.assertEqual(list(resources.IMAGE_FILES), ["background", "character", "heart"])
         self.assertEqual(images, {
-            "background": self.background, "character": self.character,
+            "background": self.background, "character": self.character, "heart": self.heart,
         })
         paths = [resources.ROOT / name for name in resources.IMAGE_FILES.values()]
         self.assertEqual(self.is_file.call_args_list, [call(path) for path in paths])
@@ -44,7 +47,7 @@ class ResourceTests(unittest.TestCase):
         for root in (self.root, str(self.root)):
             with self.subTest(root=root):
                 self.load_image.reset_mock(side_effect=True)
-                self.load_image.side_effect = [self.background, self.character]
+                self.load_image.side_effect = [self.background, self.character, self.heart]
                 images = resources.load_images(root)
 
                 self.assertEqual(set(images), set(resources.IMAGE_FILES))
@@ -53,6 +56,7 @@ class ResourceTests(unittest.TestCase):
                 ])
                 self.assertIs(self.background.texture, sentinel.background_texture)
                 self.assertIs(self.character.texture, sentinel.character_texture)
+                self.assertIs(self.heart.texture, sentinel.heart_texture)
                 self.destroy_texture.assert_not_called()
 
     def test_missing_file_error_includes_path(self):
@@ -105,15 +109,50 @@ class ResourceTests(unittest.TestCase):
         self.assertIsNone(self.background.texture)
         self.destroy_texture.assert_called_once_with(sentinel.background_texture)
 
+    def test_missing_heart_releases_previous_images(self):
+        self.is_file.side_effect = [True, True, False]
+
+        with self.assertRaises(resources.ResourceError) as caught:
+            resources.load_images(self.root)
+
+        self.assertIn(str(self.root / "Heart.png"), str(caught.exception))
+        self.assertEqual(self.load_image.call_args_list, [
+            call(str(self.root / "newfirststage.png")),
+            call(str(self.root / "assets/character.png")),
+        ])
+        self.assertEqual(self.destroy_texture.call_args_list, [
+            call(sentinel.background_texture), call(sentinel.character_texture),
+        ])
+        self.assertIsNone(self.background.texture)
+        self.assertIsNone(self.character.texture)
+
+    def test_corrupt_heart_releases_previous_images(self):
+        error = OSError("mock heart decode failure")
+        self.load_image.side_effect = [self.background, self.character, error]
+
+        with self.assertRaises(resources.ResourceError) as caught:
+            resources.load_images(self.root)
+
+        self.assertIn(str(self.root / "Heart.png"), str(caught.exception))
+        self.assertIs(caught.exception.__cause__, error)
+        self.load_image.assert_called_with(str(self.root / "Heart.png"))
+        self.assertEqual(self.destroy_texture.call_args_list, [
+            call(sentinel.background_texture), call(sentinel.character_texture),
+        ])
+        self.assertIsNone(self.background.texture)
+        self.assertIsNone(self.character.texture)
+
     def test_release_nulls_each_texture_before_destroy_and_clears_images(self):
         images = {
             "background": self.background,
             "character": self.character,
+            "heart": self.heart,
             "already_released": Mock(texture=None),
         }
         originals = {
             sentinel.background_texture: self.background,
             sentinel.character_texture: self.character,
+            sentinel.heart_texture: self.heart,
         }
 
         def destroy(texture):
@@ -125,6 +164,7 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(images, {})
         self.assertCountEqual(self.destroy_texture.call_args_list, [
             call(sentinel.background_texture), call(sentinel.character_texture),
+            call(sentinel.heart_texture),
         ])
         self.assertTrue(all(image.texture is None for image in originals.values()))
 

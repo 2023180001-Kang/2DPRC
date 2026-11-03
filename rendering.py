@@ -3,7 +3,8 @@
 from math import ceil
 
 from settings import (
-    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, HEIGHT, WIDTH,
+    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
+    HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, MAX_HEALTH, WIDTH,
 )
 
 
@@ -21,3 +22,11 @@ def draw_character(image, player):
         FRAME_WIDTH, FRAME_HEIGHT,
         0, "h" if player.facing < 0 else "", player.x, center_y, width, height,
     )
+
+
+def draw_health(image, player):
+    health = max(0, min(player.health, MAX_HEALTH))
+    for index in range(health):
+        x = WIDTH - HUD_MARGIN - HEART_SIZE / 2 - index * (HEART_SIZE + HEART_GAP)
+        y = HEIGHT - HUD_MARGIN - HEART_SIZE / 2
+        image.clip_draw(0, 0, image.w // 2, image.h, x, y, HEART_SIZE, HEART_SIZE)

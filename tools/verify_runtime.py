@@ -3,6 +3,7 @@
 from ctypes import byref, c_int, c_ubyte
 import json
 from pathlib import Path
+from random import Random
 import tempfile
 from unittest.mock import patch
 
@@ -12,9 +13,10 @@ import sdl2
 
 import main
 from events import poll_events
-from rendering import draw_character, draw_health
+from game import spawn_items
+from rendering import draw_character, draw_health, draw_items
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
-from settings import GRAVITY, GROUND_Y, JUMP_SPEED, PLAYER_HALF_WIDTH, WIDTH
+from settings import GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, PLAYER_HALF_WIDTH, WIDTH
 
 
 def push(kind, value=None):
@@ -124,6 +126,37 @@ def verify_jumping(output):
     return result
 
 
+def verify_item_spawns(output):
+    layouts = []
+    for seed, count in ((1, 3), (0, 4), (5, 5)):
+        items = spawn_items(Random(seed))
+        assert len(items) == count
+        assert {item.kind for item in items} == set(ITEM_WIDTHS)
+        seen = []
+
+        def observe_items(images, current):
+            draw_items(images, current)
+            assert tuple(current) == tuple(items)
+            seen.append(tuple(current))
+
+        def observe_health(image, player):
+            draw_health(image, player)
+            if len(seen) == 1:
+                capture(output / f"items-{count}.png")
+
+        with (patch("main.spawn_items", return_value=items) as spawn,
+              patch("main.draw_items", side_effect=observe_items),
+              patch("main.draw_health", side_effect=observe_health)):
+            assert main.run(frame_limit=3)["frames"] == 3
+            spawn.assert_called_once_with()
+        assert len(seen) == 3
+        assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+        layouts.append({"seed": seed, "count": count, "screenshot": f"items-{count}.png",
+                        "items": [{"kind": item.kind, "x": item.x, "foot_y": item.foot_y,
+                                   "width": ITEM_WIDTHS[item.kind]} for item in items]})
+    return {"status": "PASS", "layouts": layouts}
+
+
 def verify():
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
@@ -204,7 +237,7 @@ def verify():
     with tempfile.TemporaryDirectory(dir=output) as directory:
         Image.new("RGBA", (16, 16), "black").save(Path(directory) / IMAGE_FILES["background"])
         with patch("main.load_images", side_effect=lambda: load_images(directory)):
-            for missing in ("character", "heart"):
+            for missing in ("character", "heart", "dagger", "steel_pipe"):
                 try:
                     main.run(frame_limit=1)
                 except ResourceError as error:
@@ -212,13 +245,13 @@ def verify():
                 else:
                     raise AssertionError(f"Missing {missing} must fail")
                 assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
-                if missing == "character":
-                    character = Path(directory) / IMAGE_FILES["character"]
-                    character.parent.mkdir()
-                    Image.new("RGBA", (16, 16), "white").save(character)
+                fixture = Path(directory) / IMAGE_FILES[missing]
+                fixture.parent.mkdir(parents=True, exist_ok=True)
+                Image.new("RGBA", (16, 16), "white").save(fixture)
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"scripted_input": "PASS", "window_close": "PASS", "partial_load_cleanup": "PASS",
                    "heart_load_cleanup": "PASS", "health_hud": "PASS",
+                   "item_load_cleanup": "PASS", "item_spawns": verify_item_spawns(output),
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
                    "jump": verify_jumping(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")

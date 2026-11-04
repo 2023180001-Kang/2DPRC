@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from random import Random
 
 from settings import (
-    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, PLAYER_HALF_WIDTH,
-    PICKUP_RADIUS, RUN_SPEED, WALK_SPEED, WIDTH,
+    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
+    PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, WALK_SPEED, WIDTH,
 )
 
 
@@ -69,6 +69,7 @@ class Player:
     vertical_speed: float = 0.0
     health: int = MAX_HEALTH
     weapon: str | None = None
+    jump_count: int = 0
 
     @property
     def grounded(self):
@@ -101,7 +102,8 @@ class Player:
         return True
 
     def update(self, dt, controls):
-        if controls.jump_requested and self.grounded:
+        if controls.jump_requested and (self.grounded or 0 < self.jump_count < MAX_JUMPS):
+            self.jump_count = 1 if self.grounded else self.jump_count + 1
             self.vertical_speed = JUMP_SPEED
         controls.jump_requested = False
 
@@ -112,6 +114,7 @@ class Player:
             if self.foot_y <= GROUND_Y + 1e-9 and self.vertical_speed <= 0:
                 self.foot_y = GROUND_Y
                 self.vertical_speed = 0.0
+                self.jump_count = 0
 
         if controls.direction:
             self.facing = controls.direction

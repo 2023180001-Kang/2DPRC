@@ -127,20 +127,26 @@ class JumpingTests(unittest.TestCase):
         self.assertFalse(player.grounded)
         self.assertAlmostEqual(player.vertical_speed, JUMP_SPEED - GRAVITY * JUMP_DURATION / 8)
 
-    def test_airborne_requests_are_discarded_even_on_landing_update(self):
+    def test_exhausted_jump_requests_are_discarded_even_on_landing_update(self):
         controls, player = Controls(), Player()
         controls.set_key("space", True)
         elapsed = JUMP_DURATION / 8
         player.update(elapsed, controls)
-        for dt in (0, 7 * JUMP_DURATION / 8):
+        controls.set_key("space", False)
+        controls.set_key("space", True)
+        player.update(0, controls)
+        self.assertEqual(player.jump_count, 2)
+        height = player.foot_y
+        for dt in (0, 2 * JUMP_DURATION):
             controls.set_key("space", False)
             controls.set_key("space", True)
             player.update(dt, controls)
             self.assertFalse(controls.jump_requested)
             if dt == 0:
-                self.assertAlmostEqual(player.foot_y, GROUND_Y + JUMP_SPEED * elapsed - GRAVITY * elapsed ** 2 / 2)
-                self.assertAlmostEqual(player.vertical_speed, JUMP_SPEED - GRAVITY * elapsed)
+                self.assertEqual((player.foot_y, player.vertical_speed, player.jump_count),
+                                 (height, JUMP_SPEED, 2))
         self.assertTrue(player.grounded)
+        self.assertEqual(player.jump_count, 0)
         controls.set_key("space", False)
         player.update(elapsed, controls)
         self.assertEqual((player.foot_y, player.vertical_speed), (GROUND_Y, 0))

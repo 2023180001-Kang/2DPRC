@@ -6,7 +6,7 @@ import sdl2
 
 from events import KEY_NAMES, poll_events
 from game import Controls, Item, Player
-from settings import GROUND_Y, JUMP_DURATION
+from settings import GROUND_Y, JUMP_DURATION, JUMP_SPEED
 
 
 class EventTests(unittest.TestCase):
@@ -166,3 +166,56 @@ class EventTests(unittest.TestCase):
         self.key(keycode=sdl2.SDLK_f)
         poll_events(controls)
         self.assertTrue(player.pick_up(items, controls))
+
+    def test_fresh_airborne_space_allows_only_second_launch(self):
+        controls, player = Controls(), Player()
+        self.key()
+        poll_events(controls)
+        player.update(0, controls)
+        self.assertEqual(player.jump_count, 1)
+        self.key(repeat=True)
+        poll_events(controls)
+        player.update(0, controls)
+        self.assertEqual(player.jump_count, 1)
+        self.key(down=False)
+        self.key()
+        poll_events(controls)
+        player.update(0, controls)
+        self.assertEqual((player.jump_count, player.vertical_speed), (2, JUMP_SPEED))
+        player.update(0.1, controls)
+        speed = player.vertical_speed
+        self.key(down=False)
+        self.key()
+        poll_events(controls)
+        player.update(0, controls)
+        self.assertEqual((player.jump_count, player.vertical_speed), (2, speed))
+        self.assertFalse(controls.jump_requested)
+
+    def test_focus_changes_preserve_used_jumps_until_landing(self):
+        for used in (1, 2):
+            with self.subTest(used=used):
+                controls, player = Controls(), Player()
+                for _ in range(used):
+                    self.key()
+                    self.key(down=False)
+                    poll_events(controls)
+                    player.update(0, controls)
+                player.update(0.1, controls)
+                speed = player.vertical_speed
+                self.focus(False)
+                poll_events(controls)
+                self.assertEqual(player.jump_count, used)
+                self.focus(True)
+                self.key()
+                self.key(down=False)
+                poll_events(controls)
+                player.update(0, controls)
+                self.assertEqual(player.jump_count, 2)
+                self.assertEqual(player.vertical_speed, JUMP_SPEED if used == 1 else speed)
+                player.update(2 * JUMP_DURATION, controls)
+                self.assertEqual(player.jump_count, 0)
+                self.key()
+                self.key(down=False)
+                poll_events(controls)
+                player.update(0, controls)
+                self.assertEqual(player.jump_count, 1)

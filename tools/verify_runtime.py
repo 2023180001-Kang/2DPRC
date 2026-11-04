@@ -56,8 +56,6 @@ def verify_jumping(output):
     actions = {
         0: [("focus", True)],
         1: [("down", "space"), ("up", "space")],
-        8: [("down", "space")],
-        9: [("up", "space")],
         100: [("down", "right"), ("down", "lshift"), ("down", "space")],
         105: [("up", "right"), ("down", "left")],
         191: [("up", "space")],

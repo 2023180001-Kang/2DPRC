@@ -4,7 +4,7 @@ from math import ceil
 
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
-    HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, MAX_HEALTH, WIDTH,
+    HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, MAX_HEALTH, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
@@ -38,3 +38,16 @@ def draw_items(images, items):
         width = ITEM_WIDTHS[item.kind]
         height = width * image.h / image.w
         image.draw(item.x, item.foot_y + height / 2, width, height)
+
+
+def draw_held_weapon(images, player):
+    if player.weapon is None:
+        return
+    image = images[player.weapon]
+    width = ITEM_WIDTHS[player.weapon]
+    height = width * image.h / image.w
+    hand_x, hand_y = WEAPON_HAND_OFFSETS[player.state][player.frame]
+    # Place the grip at 20% of the source width on the hand, mirrored with the body.
+    x = player.x + player.facing * (hand_x * CHARACTER_SCALE + width * 0.3)
+    y = player.foot_y + hand_y * CHARACTER_SCALE
+    image.composite_draw(0, "h" if player.facing < 0 else "", x, y, width, height)

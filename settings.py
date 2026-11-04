@@ -27,3 +27,10 @@ HEART_GAP = 8
 HUD_MARGIN = 16
 ITEM_WIDTHS = {"dagger": 44, "steel_pipe": 64}
 PICKUP_RADIUS = 56.0
+# Hand offsets in source pixels from the centered character's feet, before facing flip.
+WEAPON_HAND_OFFSETS = {
+    "IDLE": ((24, 72),) * FRAME_COUNT,
+    "WALK": ((24, 72), (26, 72), (24, 74), (22, 76), (24, 74), (26, 72), (24, 72), (22, 74)),
+    "RUN": ((26, 90), (24, 92), (34, 102), (36, 100), (26, 90), (24, 92), (32, 100), (28, 96)),
+    "JUMP": ((26, 54), (24, 76), (18, 82), (16, 86), (18, 72), (20, 78), (24, 76), (24, 76)),
+}

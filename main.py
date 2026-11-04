@@ -10,7 +10,7 @@ import pico2d.pico2d as core
 from events import poll_events
 from game import Controls, Player, spawn_items
 from resources import ResourceError, load_images, release_images
-from rendering import draw_background, draw_character, draw_health, draw_items
+from rendering import draw_background, draw_character, draw_health, draw_held_weapon, draw_items
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
@@ -45,6 +45,7 @@ def run(frame_limit=None):
             draw_background(images["background"])
             draw_items(images, items)
             draw_character(images["character"], player)
+            draw_held_weapon(images, player)
             draw_health(images["heart"], player)
             pico2d.update_canvas()
             frames += 1

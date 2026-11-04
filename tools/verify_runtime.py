@@ -13,10 +13,10 @@ import sdl2
 
 import main
 from events import poll_events
-from game import spawn_items
+from game import Item, spawn_items
 from rendering import draw_character, draw_health, draw_items
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
-from settings import GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, PLAYER_HALF_WIDTH, WIDTH
+from settings import GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, WIDTH
 
 
 def push(kind, value=None):
@@ -157,6 +157,97 @@ def verify_item_spawns(output):
     return {"status": "PASS", "layouts": layouts}
 
 
+def verify_pickup(output):
+    items = [Item("dagger", WIDTH / 2 + 80), Item("steel_pipe", WIDTH / 2 + 90),
+             Item("dagger", WIDTH / 2 + 250)]
+    initial = tuple(items)
+    actions = {
+        0: [("focus", True), ("down", "f"), ("up", "f")],
+        1: [("down", "right"), ("down", "lshift")],
+        8: [("up", "right"), ("up", "lshift"), ("down", "f"), ("up", "f")],
+        9: [("down", "f")],
+        10: [("down", "f")],
+        11: [("down", "f")],
+        12: [("down", "right"), ("down", "lshift")],
+        13: [("up", "right"), ("up", "lshift")],
+        20: [("up", "f")],
+        25: [("down", "left"), ("down", "rshift")],
+        26: [("up", "left"), ("up", "rshift")],
+        30: [("down", "f"), ("up", "f")],
+        40: [("down", "space"), ("up", "space")],
+        45: [("down", "f"), ("up", "f")],
+        125: [("down", "f"), ("up", "f")],
+        130: [("down", "right")],
+        131: [("up", "right")],
+        150: [("down", "space"), ("up", "space")],
+        155: [("down", "f"), ("up", "f"), ("focus", False)],
+        156: [("focus", True)],
+        200: [("down", "right"), ("down", "lshift")],
+        215: [("up", "right"), ("up", "lshift")],
+        236: [("quit", None)],
+    }
+    shots = {7: "pickup-near-before", 8: "pickup-dagger-right", 9: "pickup-pipe-right",
+             12: "pickup-run-pipe-right", 25: "pickup-run-pipe-left", 30: "pickup-dagger-left",
+             125: "pickup-pipe-left", 130: "pickup-walk-pipe-right", 220: "pickup-after-drop"}
+    records, screenshots = [], []
+    tick = -1
+
+    def feed(controls):
+        nonlocal tick
+        tick += 1
+        if tick == 0:
+            poll_events(controls)
+        for kind, value in actions.get(tick, []):
+            push(kind, value)
+        return poll_events(controls)
+
+    def observe(image, player):
+        draw_character(image, player)
+        kinds = [item.kind for item in items] + ([player.weapon] if player.weapon else [])
+        assert sorted(kinds) == sorted(item.kind for item in initial)
+        records.append({"weapon": player.weapon, "x": player.x, "foot_y": player.foot_y,
+                        "state": player.state, "facing": player.facing, "floor": tuple(items)})
+
+    def observe_health(image, player):
+        draw_health(image, player)
+        assert player.health == 3
+        shot = shots.get(tick)
+        if player.state == "JUMP" and player.vertical_speed <= 0:
+            shot = "pickup-jump-dagger" if player.weapon == "dagger" else "pickup-jump-pipe"
+        if shot and shot not in screenshots:
+            capture(output / f"{shot}.png")
+            screenshots.append(shot)
+
+    with (patch("main.spawn_items", return_value=items) as spawn,
+          patch("main.poll_events", side_effect=feed),
+          patch("main.draw_character", side_effect=observe),
+          patch("main.draw_health", side_effect=observe_health)):
+        result = main.run(frame_limit=260)
+        spawn.assert_called_once_with()
+    assert result["frames"] == 236, result
+    assert records[0]["weapon"] is records[7]["weapon"] is None
+    assert abs(records[7]["x"] - initial[0].x) <= PICKUP_RADIUS
+    expected = {8: "dagger", 9: "steel_pipe", 11: "steel_pipe", 12: "steel_pipe",
+                25: "steel_pipe", 30: "dagger", 45: "dagger", 120: "dagger",
+                125: "steel_pipe", 130: "steel_pipe", 155: "steel_pipe", 235: "steel_pipe"}
+    for tick, weapon in expected.items():
+        assert records[tick]["weapon"] == weapon, (tick, records[tick])
+        assert len(records[tick]["floor"]) == 2
+    assert initial[0] not in records[8]["floor"] and initial[1] not in records[9]["floor"]
+    for tick, kind in ((9, "dagger"), (30, "steel_pipe"), (125, "dagger")):
+        record = records[tick]
+        assert Item(kind, record["x"], GROUND_Y) in record["floor"]
+    for tick, state in {12: "RUN", 25: "RUN", 45: "JUMP", 120: "IDLE", 130: "WALK",
+                        155: "JUMP", 235: "IDLE"}.items():
+        assert records[tick]["state"] == state, (tick, records[tick])
+    assert records[12]["facing"] == 1 and records[25]["facing"] == -1
+    assert len(screenshots) == 11, screenshots
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"status": "PASS", "screenshots": screenshots, "initial_count": len(initial),
+                   "final_weapon": records[-1]["weapon"], "final_floor_count": len(items)})
+    return result
+
+
 def verify():
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
@@ -253,7 +344,7 @@ def verify():
                    "heart_load_cleanup": "PASS", "health_hud": "PASS",
                    "item_load_cleanup": "PASS", "item_spawns": verify_item_spawns(output),
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
-                   "jump": verify_jumping(output)})
+                   "jump": verify_jumping(output), "pickup": verify_pickup(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 

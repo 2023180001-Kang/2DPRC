@@ -7,7 +7,7 @@ import sdl2
 KEY_NAMES = {
     sdl2.SDLK_LEFT: "left", sdl2.SDLK_RIGHT: "right",
     sdl2.SDLK_LSHIFT: "lshift", sdl2.SDLK_RSHIFT: "rshift",
-    sdl2.SDLK_SPACE: "space",
+    sdl2.SDLK_SPACE: "space", sdl2.SDLK_f: "f",
 }
 
 
@@ -24,6 +24,7 @@ def poll_events(controls):
                 controls.focused = False
                 controls.held.clear()
                 controls.jump_requested = False
+                controls.pickup_requested = False
             elif event.window.event == sdl2.SDL_WINDOWEVENT_FOCUS_GAINED:
                 controls.focused = True
         elif event.type in (sdl2.SDL_KEYDOWN, sdl2.SDL_KEYUP):

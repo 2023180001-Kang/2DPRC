@@ -5,7 +5,7 @@ from random import Random
 
 from settings import (
     ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, PLAYER_HALF_WIDTH,
-    RUN_SPEED, WALK_SPEED, WIDTH,
+    PICKUP_RADIUS, RUN_SPEED, WALK_SPEED, WIDTH,
 )
 
 
@@ -36,13 +36,16 @@ class Controls:
     held: set[str] = field(default_factory=set)
     focused: bool = True
     jump_requested: bool = False
+    pickup_requested: bool = False
 
     def set_key(self, key, down):
-        if key not in {"left", "right", "lshift", "rshift", "space"}:
+        if key not in {"left", "right", "lshift", "rshift", "space", "f"}:
             return
         if down and self.focused:
             if key == "space" and key not in self.held:
                 self.jump_requested = True
+            if key == "f" and key not in self.held:
+                self.pickup_requested = True
             self.held.add(key)
         else:
             self.held.discard(key)
@@ -65,6 +68,7 @@ class Player:
     animation_time: float = 0.0
     vertical_speed: float = 0.0
     health: int = MAX_HEALTH
+    weapon: str | None = None
 
     @property
     def grounded(self):
@@ -78,6 +82,23 @@ class Player:
     @property
     def row(self):
         return ANIMATIONS[self.state][0]
+
+    def pick_up(self, items, controls):
+        requested = controls.pickup_requested
+        controls.pickup_requested = False
+        if not requested or not self.grounded or not items:
+            return False
+        distance, index = min(
+            ((item.x - self.x) ** 2 + (item.foot_y - self.foot_y) ** 2, index)
+            for index, item in enumerate(items)
+        )
+        if distance > PICKUP_RADIUS ** 2:
+            return False
+        previous = self.weapon
+        self.weapon = items.pop(index).kind
+        if previous is not None:
+            items.append(Item(previous, self.x))
+        return True
 
     def update(self, dt, controls):
         if controls.jump_requested and self.grounded:

@@ -5,7 +5,7 @@ from unittest.mock import patch
 import sdl2
 
 from events import KEY_NAMES, poll_events
-from game import Controls, Player
+from game import Controls, Item, Player
 from settings import GROUND_Y, JUMP_DURATION
 
 
@@ -45,21 +45,24 @@ class EventTests(unittest.TestCase):
         self.assertNotIn("space", controls.held)
 
     def test_repeated_sdl_keydown_does_not_request_jump(self):
-        for keycode in (sdl2.SDLK_SPACE, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
+        for keycode in (sdl2.SDLK_SPACE, sdl2.SDLK_f, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
             with self.subTest(keycode=keycode):
                 controls = Controls()
                 self.key(repeat=True, keycode=keycode)
                 poll_events(controls)
                 self.assertFalse(controls.jump_requested)
+                self.assertFalse(controls.pickup_requested)
                 self.assertFalse(controls.held)
                 self.key(keycode=keycode)
                 poll_events(controls)
                 controls.jump_requested = False
+                controls.pickup_requested = False
                 for _ in range(3):
                     self.key(repeat=True, keycode=keycode)
                 poll_events(controls)
                 self.assertEqual(controls.held, {KEY_NAMES[keycode]})
                 self.assertFalse(controls.jump_requested)
+                self.assertFalse(controls.pickup_requested)
                 self.key(down=False, keycode=keycode)
                 poll_events(controls)
                 self.assertFalse(controls.held)
@@ -103,12 +106,14 @@ class EventTests(unittest.TestCase):
         for keycode in (sdl2.SDLK_LEFT, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
             self.key(keycode=keycode)
         self.key()
+        self.key(keycode=sdl2.SDLK_f)
         poll_events(controls)
-        self.assertEqual(controls.held, {"left", "lshift", "rshift", "space"})
+        self.assertEqual(controls.held, {"left", "lshift", "rshift", "space", "f"})
         self.assertIs(controls.running, True)
         self.focus(False)
         poll_events(controls)
         self.assertFalse(controls.jump_requested)
+        self.assertFalse(controls.pickup_requested)
         self.assertFalse(controls.held)
         self.assertIs(controls.running, False)
         player = Player()
@@ -135,3 +140,29 @@ class EventTests(unittest.TestCase):
         self.key()
         poll_events(controls)
         self.assertTrue(controls.jump_requested)
+
+    def test_f_tap_in_one_batch_picks_up_once(self):
+        controls, player = Controls(), Player()
+        items = [Item("dagger", player.x)]
+        self.key(keycode=sdl2.SDLK_f)
+        self.key(down=False, keycode=sdl2.SDLK_f)
+        poll_events(controls)
+        self.assertTrue(controls.pickup_requested)
+        self.assertNotIn("f", controls.held)
+        self.assertTrue(player.pick_up(items, controls))
+        self.assertEqual((player.weapon, items), ("dagger", []))
+        self.assertFalse(player.pick_up(items, controls))
+
+    def test_focus_loss_discards_pickup_and_f_requires_new_press(self):
+        controls, player = Controls(), Player()
+        items = [Item("steel_pipe", player.x)]
+        self.key(keycode=sdl2.SDLK_f)
+        self.focus(False)
+        self.key(keycode=sdl2.SDLK_f)
+        poll_events(controls)
+        self.assertFalse(controls.pickup_requested)
+        self.assertFalse(player.pick_up(items, controls))
+        self.focus(True)
+        self.key(keycode=sdl2.SDLK_f)
+        poll_events(controls)
+        self.assertTrue(player.pick_up(items, controls))

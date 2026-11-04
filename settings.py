@@ -26,3 +26,4 @@ HEART_SIZE = 44
 HEART_GAP = 8
 HUD_MARGIN = 16
 ITEM_WIDTHS = {"dagger": 44, "steel_pipe": 64}
+PICKUP_RADIUS = 56.0

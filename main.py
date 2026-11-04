@@ -24,7 +24,7 @@ def run(frame_limit=None):
         if not core.window or not core.renderer:
             raise RuntimeError(f"Cannot create canvas: {core.SDL_GetError()!r}")
         pico2d.hide_lattice()
-        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump")
+        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap")
         images = load_images()
         player = Player()
         items = spawn_items()
@@ -39,6 +39,7 @@ def run(frame_limit=None):
             running = poll_events(controls)
             if not running:
                 break
+            player.pick_up(items, controls)
             player.update(dt, controls)
             pico2d.clear_canvas()
             draw_background(images["background"])

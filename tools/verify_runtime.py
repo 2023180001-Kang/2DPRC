@@ -16,7 +16,10 @@ from events import poll_events
 from game import Item, spawn_items
 from rendering import draw_character, draw_health, draw_items
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
-from settings import GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, WIDTH
+from settings import (
+    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
+    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, WIDTH,
+)
 
 
 def push(kind, value=None):
@@ -121,6 +124,86 @@ def verify_jumping(output):
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"scripted_jump": "PASS", "screenshots": screenshots,
                    "peak_height": max(record["foot_y"] for record in records) - GROUND_Y})
+    return result
+
+
+def verify_double_jumping(output):
+    items = [Item("steel_pipe", WIDTH / 2), Item("dagger", WIDTH / 2 - 250),
+             Item("dagger", WIDTH / 2 + 250)]
+    actions = {
+        0: [("focus", True), ("down", "f"), ("up", "f")],
+        1: [("down", "space"), ("down", "right"), ("down", "rshift")],
+        2: [("down", "space")],
+        10: [("up", "space")],
+        20: [("down", "space"), ("up", "right"), ("down", "left")],
+        21: [("up", "space")],
+        30: [("down", "space")],
+        40: [("up", "left"), ("up", "rshift")],
+        150: [("up", "space"), ("down", "space")],
+        151: [("up", "space")],
+        155: [("focus", False)],
+        156: [("focus", True)],
+        165: [("down", "space"), ("up", "space")],
+        170: [("down", "space"), ("up", "space")],
+        261: [("quit", None)],
+    }
+    shots = {0: "double-ground-armed", 1: "double-first-rise", 20: "double-second-launch",
+             30: "double-third-ignored", 130: "double-landed-held", 155: "double-focus-preserved",
+             165: "double-relaunch-after-focus", 260: "double-landed-reset"}
+    records, screenshots = [], []
+    tick = -1
+
+    def feed(controls):
+        nonlocal tick
+        tick += 1
+        if tick == 0:
+            poll_events(controls)
+        for kind, value in actions.get(tick, []):
+            push(kind, value)
+        return poll_events(controls)
+
+    def observe(image, player):
+        draw_character(image, player)
+        assert player.weapon == "steel_pipe" and len(items) == 2
+        assert player.foot_y + (FRAME_HEIGHT - FRAME_BOTTOM_PADDING) * CHARACTER_SCALE <= HEIGHT
+        records.append({"count": player.jump_count, "height": player.foot_y - GROUND_Y,
+                        "speed": player.vertical_speed, "animation": player.animation_time,
+                        "facing": player.facing, "state": player.state})
+
+    def observe_health(image, player):
+        draw_health(image, player)
+        assert player.health == 3
+        shot = shots.get(tick)
+        if shot is None and tick < 130 and player.jump_count == 2 and player.vertical_speed <= 0:
+            shot = "double-peak"
+        if shot and shot not in screenshots:
+            capture(output / f"{shot}.png")
+            screenshots.append(shot)
+
+    with (patch("main.spawn_items", return_value=items) as spawn,
+          patch("main.poll_events", side_effect=feed),
+          patch("main.draw_character", side_effect=observe),
+          patch("main.draw_health", side_effect=observe_health)):
+        result = main.run(frame_limit=280)
+        spawn.assert_called_once_with()
+    assert result["frames"] == 261, result
+    for tick, count in {0: 0, 1: 1, 2: 1, 19: 1, 20: 2, 30: 2, 130: 0,
+                        150: 1, 155: 1, 156: 1, 165: 2, 170: 2, 260: 0}.items():
+        assert records[tick]["count"] == count, (tick, records[tick])
+    for launch, previous in ((20, 19), (165, 164)):
+        assert records[launch]["speed"] > records[previous]["speed"]
+        assert records[launch]["animation"] < records[previous]["animation"]
+    assert records[30]["speed"] <= records[29]["speed"]
+    assert records[170]["speed"] <= records[169]["speed"]
+    assert records[130]["state"] == records[260]["state"] == "IDLE"
+    assert records[130]["height"] == records[260]["height"] == 0
+    assert records[1]["facing"] == 1 and records[20]["facing"] == -1
+    peak = max(record["height"] for record in records)
+    assert 192 < peak <= 384 + 1e-6
+    assert len(screenshots) == 9, screenshots
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"status": "PASS", "peak_height": peak, "screenshots": screenshots,
+                   "final_jump_count": records[-1]["count"], "final_weapon": "steel_pipe"})
     return result
 
 
@@ -342,7 +425,8 @@ def verify():
                    "heart_load_cleanup": "PASS", "health_hud": "PASS",
                    "item_load_cleanup": "PASS", "item_spawns": verify_item_spawns(output),
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
-                   "jump": verify_jumping(output), "pickup": verify_pickup(output)})
+                   "jump": verify_jumping(output), "pickup": verify_pickup(output),
+                   "double_jump": verify_double_jumping(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 

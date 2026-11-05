@@ -5,7 +5,8 @@ from random import Random
 
 from settings import (
     ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
-    PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, WALK_SPEED, WIDTH,
+    PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_X,
+    RUN_SPEED, SECOND_STAGE_SPAWN_X, WALK_SPEED, WIDTH,
 )
 
 
@@ -16,7 +17,7 @@ class Item:
     foot_y: float = GROUND_Y
 
 
-def spawn_items(rng=None):
+def spawn_items(rng=None, spawn_x=WIDTH / 2):
     rng = rng if rng is not None else Random()
     count = rng.randint(3, 5)
     kinds = list(ITEM_WIDTHS)
@@ -25,7 +26,7 @@ def spawn_items(rng=None):
     width = max(ITEM_WIDTHS.values())
     # Spaced slots keep items apart and leave the player's starting position clear.
     slots = [x for x in range(width, WIDTH - width + 1, 2 * width)
-             if abs(x - WIDTH / 2) > PLAYER_HALF_WIDTH + width]
+              if abs(x - spawn_x) > PLAYER_HALF_WIDTH + width]
     positions = rng.sample(slots, count)
     return [Item(kind, x + rng.uniform(-width / 4, width / 4))
             for kind, x in zip(kinds, positions)]
@@ -57,6 +58,33 @@ class Controls:
     @property
     def running(self):
         return bool(self.held & {"lshift", "rshift"})
+
+
+@dataclass
+class Stage:
+    items: list[Item]
+    number: int = 1
+
+    @property
+    def background_key(self):
+        return "background" if self.number == 1 else "second_background"
+
+    def enter_portal(self, player, controls, rng=None):
+        if (self.number != 1 or not player.grounded
+                or abs(player.x - PORTAL_X) > PORTAL_TRIGGER_HALF_WIDTH):
+            return False
+        self.items = spawn_items(rng, spawn_x=SECOND_STAGE_SPAWN_X)
+        self.number = 2
+        player.x = SECOND_STAGE_SPAWN_X
+        player.foot_y = GROUND_Y
+        player.vertical_speed = 0.0
+        player.jump_count = 0
+        player.state = "IDLE"
+        player.animation_time = 0.0
+        player.facing = 1
+        controls.held.clear()
+        controls.jump_requested = controls.pickup_requested = False
+        return True
 
 
 @dataclass

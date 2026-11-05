@@ -8,10 +8,11 @@ import pico2d
 import pico2d.pico2d as core
 
 from events import poll_events
-from game import Controls, Player, spawn_items
+from game import Controls, Player, Stage, spawn_items
 from resources import ResourceError, load_images, release_images
 from rendering import (
     draw_background, draw_character, draw_health, draw_held_weapon, draw_items, draw_pickup_hint,
+    draw_portal,
 )
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
@@ -29,7 +30,7 @@ def run(frame_limit=None):
         core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap/drop")
         images = load_images()
         player = Player()
-        items = spawn_items()
+        stage = Stage(items=spawn_items())
         controls = Controls()
         running = True
         frames = 0
@@ -41,14 +42,16 @@ def run(frame_limit=None):
             running = poll_events(controls)
             if not running:
                 break
-            player.pick_up(items, controls)
+            player.pick_up(stage.items, controls)
             player.update(dt, controls)
+            stage.enter_portal(player, controls)
             pico2d.clear_canvas()
-            draw_background(images["background"])
-            draw_items(images, items)
+            draw_background(images[stage.background_key])
+            draw_portal(images["portal"], stage.number)
+            draw_items(images, stage.items)
             draw_character(images["character"], player)
             draw_held_weapon(images, player)
-            draw_pickup_hint(images, items, player)
+            draw_pickup_hint(images, stage.items, player)
             draw_health(images["health_bar"], player)
             pico2d.update_canvas()
             frames += 1
@@ -56,7 +59,7 @@ def run(frame_limit=None):
             if frame_limit is not None and frames >= frame_limit:
                 break
         elapsed = perf_counter() - started
-        return {"frames": frames, "seconds": elapsed, "fps": frames / elapsed}
+        return {"frames": frames, "seconds": elapsed, "fps": frames / elapsed, "stage": stage.number}
     finally:
         try:
             release_images(images)

@@ -6,14 +6,21 @@ from pico2d import draw_rectangle
 
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
-    HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
-    WEAPON_HAND_OFFSETS, WIDTH,
+    GROUND_Y, HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
+    PORTAL_WIDTH, PORTAL_X, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
 def draw_background(image):
     scale = max(WIDTH / image.w, HEIGHT / image.h)
     image.draw(WIDTH / 2, HEIGHT / 2, ceil(image.w * scale), ceil(image.h * scale))
+
+
+def draw_portal(image, stage_number):
+    if stage_number != 1:
+        return
+    height = PORTAL_WIDTH * image.h / image.w
+    image.draw(PORTAL_X, GROUND_Y + height / 2, PORTAL_WIDTH, height)
 
 
 def draw_character(image, player):

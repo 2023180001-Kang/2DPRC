@@ -10,6 +10,7 @@ IMAGE_FILES = {
     "background": "newfirststage.png", "character": "assets/character.png",
     "health_bar": "hp_preview_100.png",
     "dagger": "dagger_item_pico2d.png", "steel_pipe": "steel_pipe_item_pico2d.png",
+    "second_background": "firstSecondmap.png", "portal": "Hood_Man_Teleport_Pad_512.png",
 }
 
 

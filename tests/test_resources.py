@@ -18,6 +18,8 @@ class ResourceTests(unittest.TestCase):
             "health_bar": self.health_bar,
             "dagger": Mock(texture=sentinel.dagger_texture),
             "steel_pipe": Mock(texture=sentinel.steel_pipe_texture),
+            "second_background": Mock(texture=sentinel.second_background_texture),
+            "portal": Mock(texture=sentinel.portal_texture),
         }
         loader = patch.object(
             resources.pico2d, "load_image",
@@ -42,6 +44,8 @@ class ResourceTests(unittest.TestCase):
             "health_bar": "hp_preview_100.png",
             "dagger": "dagger_item_pico2d.png",
             "steel_pipe": "steel_pipe_item_pico2d.png",
+            "second_background": "firstSecondmap.png",
+            "portal": "Hood_Man_Teleport_Pad_512.png",
         })
         self.assertEqual(list(resources.IMAGE_FILES), list(self.images))
         self.assertEqual(images, self.images)
@@ -148,10 +152,10 @@ class ResourceTests(unittest.TestCase):
         self.assertIsNone(self.background.texture)
         self.assertIsNone(self.character.texture)
 
-    def test_missing_or_corrupt_items_release_previous_images(self):
+    def test_missing_or_corrupt_items_and_stage_images_release_previous_images(self):
         originals = [image.texture for image in self.images.values()]
         fixtures = list(self.images.values())
-        for index, name in enumerate(("dagger", "steel_pipe"), start=3):
+        for index, name in enumerate(("dagger", "steel_pipe", "second_background", "portal"), start=3):
             for corrupt in (False, True):
                 with self.subTest(item=name, corrupt=corrupt):
                     for image, texture in zip(fixtures, originals):

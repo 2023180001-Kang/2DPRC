@@ -297,7 +297,7 @@ class LifecycleTests(unittest.TestCase):
               patch("game.spawn_items", return_value=second_items) as spawn):
             result = main.run(frame_limit=2)
         self.assertEqual(result["stage"], 2)
-        spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X)
+        spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
         self.assertEqual(self.draw_background.call_args_list, [call(self.retained_images[5])] * 2)
         self.assertEqual(self.draw_portal.call_args_list, [call(self.retained_images[6], 2)] * 2)
         self.assertEqual(self.draw_items.call_args_list, [call(self.images, second_items)] * 2)

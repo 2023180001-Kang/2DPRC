@@ -5,7 +5,7 @@ from random import Random
 
 from settings import (
     AIR_DROP_HEIGHT, ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
-    PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_X,
+    PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_SPAWN_PADDING, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X,
     RUN_SPEED, SECOND_STAGE_SPAWN_X, WALK_SPEED, WIDTH,
 )
 
@@ -28,18 +28,22 @@ class Item:
         return replace(self, foot_y=y, vertical_speed=speed)
 
 
-def spawn_items(rng=None, spawn_x=WIDTH / 2):
+def spawn_items(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
     rng = rng if rng is not None else Random()
     count = rng.randint(3, 5)
     kinds = list(ITEM_WIDTHS)
     kinds += rng.choices(kinds, k=count - len(kinds))
     rng.shuffle(kinds)
     width = max(ITEM_WIDTHS.values())
+    jitter = width / 4
+    portal_clearance = PORTAL_WIDTH / 2 + PORTAL_SPAWN_PADDING + width / 2 + jitter
     # Spaced slots keep items apart and leave the player's starting position clear.
+    # Reserve the entire item width plus jitter around the first map's portal.
     slots = [x for x in range(width, WIDTH - width + 1, 2 * width)
-              if abs(x - spawn_x) > PLAYER_HALF_WIDTH + width]
+             if abs(x - spawn_x) > PLAYER_HALF_WIDTH + width
+             and (stage_number != 1 or abs(x - PORTAL_X) > portal_clearance)]
     positions = rng.sample(slots, count)
-    return [Item(kind, x + rng.uniform(-width / 4, width / 4))
+    return [Item(kind, x + rng.uniform(-jitter, jitter))
             for kind, x in zip(kinds, positions)]
 
 
@@ -88,7 +92,7 @@ class Stage:
         if (self.number != 1 or not player.grounded
                 or abs(player.x - PORTAL_X) > PORTAL_TRIGGER_HALF_WIDTH):
             return False
-        self.items = spawn_items(rng, spawn_x=SECOND_STAGE_SPAWN_X)
+        self.items = spawn_items(rng, spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
         self.number = 2
         player.x = SECOND_STAGE_SPAWN_X
         player.foot_y = GROUND_Y

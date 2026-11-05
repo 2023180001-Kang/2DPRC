@@ -18,7 +18,7 @@ from rendering import draw_background, draw_character, draw_health, draw_items, 
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
     AIR_DROP_HEIGHT, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
-    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X,
+    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_SPAWN_PADDING, PORTAL_WIDTH, PORTAL_X,
     SECOND_STAGE_SPAWN_X, WIDTH,
 )
 
@@ -214,6 +214,8 @@ def verify_item_spawns(output):
         items = spawn_items(Random(seed))
         assert len(items) == count
         assert {item.kind for item in items} == set(ITEM_WIDTHS)
+        assert all(abs(item.x - PORTAL_X) > PORTAL_WIDTH / 2 + PORTAL_SPAWN_PADDING
+                   + ITEM_WIDTHS[item.kind] / 2 for item in items)
         seen = []
 
         def observe_items(images, current):
@@ -623,15 +625,15 @@ def verify_portal(output):
         first_items = [Item("steel_pipe", WIDTH / 2), Item("dagger", 250), Item("dagger", 500)]
         with (patch("main.Stage", side_effect=make_stage),
               patch("main.spawn_items", return_value=first_items),
-              patch("game.spawn_items", side_effect=lambda rng=None, spawn_x=WIDTH / 2:
-                    spawn_items(Random(seed), spawn_x=spawn_x)) as spawn,
+              patch("game.spawn_items", side_effect=lambda rng=None, spawn_x=WIDTH / 2, stage_number=1:
+                    spawn_items(Random(seed), spawn_x=spawn_x, stage_number=stage_number)) as spawn,
               patch("main.load_images", side_effect=remember_images),
               patch("main.poll_events", side_effect=feed),
               patch("main.draw_background", side_effect=observe_background),
               patch("main.draw_character", side_effect=observe_character),
               patch("main.draw_health", side_effect=observe_health)):
             result = main.run(frame_limit=600)
-            spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X)
+            spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
         assert result["stage"] == 2 and phase == "jump" and players[-1].grounded
         assert result["frames"] < 600 and len(screenshots) == 5, (result, screenshots)
         assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)

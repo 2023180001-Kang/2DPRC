@@ -9,7 +9,8 @@ from rendering import draw_items
 from resources import IMAGE_FILES, ROOT
 from settings import (
     CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
-    GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH, WIDTH,
+    GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH, PORTAL_SPAWN_PADDING, PORTAL_WIDTH, PORTAL_X,
+    SECOND_STAGE_SPAWN_X, WIDTH,
 )
 
 
@@ -40,6 +41,27 @@ class ItemTests(unittest.TestCase):
 
     def test_seed_reproduces_layout(self):
         self.assertEqual(spawn_items(Random(17)), spawn_items(Random(17)))
+
+    def test_first_map_items_keep_their_full_width_outside_portal_and_padding(self):
+        counts = set()
+        for seed in range(500):
+            with self.subTest(seed=seed):
+                items = spawn_items(Random(seed))
+                self.assertIn(len(items), (3, 4, 5))
+                self.assertEqual({item.kind for item in items}, set(ITEM_WIDTHS))
+                for item in items:
+                    self.assertGreater(abs(item.x - PORTAL_X),
+                                       PORTAL_WIDTH / 2 + PORTAL_SPAWN_PADDING + ITEM_WIDTHS[item.kind] / 2)
+                counts.add(len(items))
+        self.assertEqual(counts, {3, 4, 5})
+
+    def test_second_map_can_spawn_in_right_area_without_a_portal(self):
+        used_right_area = False
+        for seed in range(100):
+            items = spawn_items(Random(seed), spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
+            self.assertIn(len(items), (3, 4, 5))
+            used_right_area |= any(abs(item.x - PORTAL_X) < PORTAL_WIDTH / 2 for item in items)
+        self.assertTrue(used_right_area)
 
     def test_new_spawns_vary_positions_and_counts(self):
         rng = Random(17)

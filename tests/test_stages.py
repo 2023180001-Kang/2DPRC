@@ -9,7 +9,7 @@ from rendering import draw_background, draw_portal
 from resources import IMAGE_FILES, ROOT
 from settings import (
     CHARACTER_SCALE, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y, HEIGHT, ITEM_WIDTHS,
-    PLAYER_HALF_WIDTH, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X,
+    PLAYER_HALF_WIDTH, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X, PORTAL_Y,
     SECOND_STAGE_SPAWN_X, WIDTH,
 )
 
@@ -110,7 +110,10 @@ class StageTests(unittest.TestCase):
         self.assertEqual((x, width), (PORTAL_X, PORTAL_WIDTH))
         self.assertAlmostEqual(height, 76.5)
         self.assertAlmostEqual(width / height, image.w / image.h)
-        self.assertEqual(y - height / 2, GROUND_Y)
+        self.assertEqual(y, GROUND_Y)
+        self.assertEqual(y, PORTAL_Y)
+        self.assertLess(y - height / 2, GROUND_Y)
+        self.assertGreater(y + height / 2, GROUND_Y)
         self.assertEqual(x + width / 2, WIDTH - 16)
         self.assertGreaterEqual(x - width / 2, 0)
         self.assertLessEqual(y + height / 2, HEIGHT)

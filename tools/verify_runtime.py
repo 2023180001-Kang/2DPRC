@@ -14,7 +14,7 @@ import sdl2
 import main
 from events import poll_events
 from game import Item, spawn_items
-from rendering import draw_character, draw_health, draw_items
+from rendering import draw_character, draw_health, draw_items, draw_pickup_hint
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
@@ -329,6 +329,84 @@ def verify_pickup(output):
     return result
 
 
+def verify_drop_and_hint(output):
+    items = [Item("dagger", WIDTH / 2 + 80), Item("steel_pipe", WIDTH / 2 + 90)]
+    initial_kinds = sorted(item.kind for item in items)
+    actions = {
+        0: [("focus", True)],
+        1: [("down", "right"), ("down", "lshift")],
+        8: [("up", "right"), ("up", "lshift"), ("down", "f"), ("up", "f")],
+        9: [("down", "f")],
+        10: [("down", "f")],
+        12: [("down", "right"), ("down", "lshift")],
+        20: [("up", "f")],
+        40: [("up", "right"), ("up", "lshift")],
+        50: [("down", "f")],
+        51: [("down", "f")],
+        60: [("up", "f"), ("down", "f")],
+        64: [("up", "f")],
+        65: [("down", "space"), ("up", "space")],
+        66: [("down", "f"), ("up", "f")],
+        150: [("quit", None)],
+    }
+    shots = {0: "hint-out-of-range", 7: "hint-near-before-pickup", 9: "hint-after-swap",
+             45: "hint-away-before-drop", 50: "f-drop-on-ground", 51: "f-drop-held-no-repickup",
+             60: "f-repickup", 66: "hint-airborne-no-drop", 140: "f-landed-held"}
+    records = []
+    tick = -1
+
+    def feed(controls):
+        nonlocal tick
+        tick += 1
+        if tick == 0:
+            poll_events(controls)
+        for kind, value in actions.get(tick, []):
+            push(kind, value)
+        return poll_events(controls)
+
+    def observe_hint(images, current, player):
+        target = draw_pickup_hint(images, current, player)
+        index = player.pickup_target(current)
+        assert target is (None if index is None else current[index])
+        kinds = [item.kind for item in current] + ([player.weapon] if player.weapon else [])
+        assert sorted(kinds) == initial_kinds
+        records.append({"weapon": player.weapon, "x": player.x, "state": player.state,
+                        "floor": tuple(current), "hint": target})
+
+    def observe_health(image, player):
+        draw_health(image, player)
+        assert player.health == 3
+        if tick in shots:
+            capture(output / f"{shots[tick]}.png")
+
+    with (patch("main.spawn_items", return_value=items),
+          patch("main.poll_events", side_effect=feed),
+          patch("main.draw_pickup_hint", side_effect=observe_hint),
+          patch("main.draw_health", side_effect=observe_health)):
+        result = main.run(frame_limit=160)
+    assert result["frames"] == 150, result
+    assert records[0]["hint"] is None
+    assert records[7]["hint"].kind == "dagger"
+    assert records[8]["weapon"] == "dagger" and records[9]["weapon"] == "steel_pipe"
+    assert records[9]["hint"].kind == "dagger"
+    assert records[45]["weapon"] == "steel_pipe" and records[45]["hint"] is None
+    dropped = Item("steel_pipe", records[50]["x"], GROUND_Y)
+    for frame in (50, 51, 59):
+        assert records[frame]["weapon"] is None
+        assert dropped in records[frame]["floor"]
+        assert records[frame]["hint"] == dropped
+    assert records[60]["weapon"] == "steel_pipe" and dropped not in records[60]["floor"]
+    assert records[60]["hint"] is None
+    assert records[66]["state"] == "JUMP" and records[66]["hint"] is None
+    assert records[66]["weapon"] == records[140]["weapon"] == "steel_pipe"
+    assert records[140]["state"] == "IDLE"
+    assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"status": "PASS", "drop_and_repickup": "PASS", "hint_target": "PASS",
+                   "held_f_no_repeat": "PASS", "airborne_no_drop": "PASS",
+                   "screenshots": list(shots.values())})
+    return result
+
+
 def verify():
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
@@ -426,7 +504,8 @@ def verify():
                    "item_load_cleanup": "PASS", "item_spawns": verify_item_spawns(output),
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
                    "jump": verify_jumping(output), "pickup": verify_pickup(output),
-                   "double_jump": verify_double_jumping(output)})
+                   "double_jump": verify_double_jumping(output),
+                   "drop_and_hint": verify_drop_and_hint(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 

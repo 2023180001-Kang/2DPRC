@@ -34,15 +34,23 @@ class PickupHintTests(unittest.TestCase):
                 self.assertIsNone(draw_pickup_hint(self.images, items, player))
                 self.rectangle.assert_not_called()
 
-    def test_small_keycap_is_above_item_and_rendering_does_not_change_state(self):
+    def test_only_f_strokes_are_above_item_and_rendering_does_not_change_state(self):
         player = Player(weapon="steel_pipe")
         items = [Item("dagger", player.x + 40)]
         original = items[:]
         target = draw_pickup_hint(self.images, items, player)
-        left, bottom, right, top = self.rectangle.call_args_list[0].args[:4]
+        calls = self.rectangle.call_args_list
+        self.assertEqual(len(calls), 3)
+        for draw in calls:
+            self.assertEqual(draw.args[4:], (255, 245, 210))
+            self.assertEqual(draw.kwargs, {"filled": True})
+        left = min(draw.args[0] for draw in calls)
+        bottom = min(draw.args[1] for draw in calls)
+        right = max(draw.args[2] for draw in calls)
+        top = max(draw.args[3] for draw in calls)
         self.assertEqual((left + right) / 2, target.x)
-        self.assertEqual((right - left, top - bottom), (PICKUP_HINT_SIZE, PICKUP_HINT_SIZE))
-        self.assertEqual(bottom, GROUND_Y + 10 + PICKUP_HINT_GAP)
+        self.assertEqual((right - left, top - bottom), (8, 12))
+        self.assertEqual((bottom + top) / 2, GROUND_Y + 10 + PICKUP_HINT_GAP + PICKUP_HINT_SIZE / 2)
         self.assertEqual(items, original)
         self.assertEqual(player.weapon, "steel_pipe")
 

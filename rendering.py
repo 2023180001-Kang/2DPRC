@@ -52,8 +52,6 @@ def draw_pickup_hint(images, items, player):
     x = max(half, min(item.x, WIDTH - half))
     top = item.foot_y + ITEM_WIDTHS[item.kind] * image.h / image.w
     y = min(top + PICKUP_HINT_GAP + half, HEIGHT - half)
-    draw_rectangle(x - half, y - half, x + half, y + half, 20, 24, 32, filled=True)
-    draw_rectangle(x - half, y - half, x + half, y + half, 255, 220, 120)
     # A small pixel-art F avoids an external font dependency.
     for left, bottom, right, upper in ((-4, -6, -2, 6), (-4, 4, 4, 6), (-4, -1, 3, 1)):
         draw_rectangle(x + left, y + bottom, x + right, y + upper,

@@ -14,11 +14,11 @@ import sdl2
 import main
 from events import poll_events
 from game import Item, Stage, spawn_items
-from rendering import draw_background, draw_character, draw_health, draw_items, draw_pickup_hint
+from rendering import draw_background, draw_character, draw_health, draw_items, draw_pickup_hint, draw_stage_arrows
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
     AIR_DROP_HEIGHT, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
-    ARROW_SPAWN_PADDING, ARROW_WIDTH, ARROW_X, ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS,
+    ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_WIDTH, ARROW_X, ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS,
     PLAYER_HALF_WIDTH, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WIDTH,
 )
 
@@ -214,7 +214,7 @@ def verify_item_spawns(output):
         items = spawn_items(Random(seed))
         assert len(items) == count
         assert {item.kind for item in items} == set(ITEM_WIDTHS)
-        assert all(abs(item.x - ARROW_X[1]) > ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING
+        assert all(abs(item.x - ARROW_X[1]) > ARROW_WIDTH / 2 + ARROW_SWAY_AMPLITUDE + ARROW_SPAWN_PADDING
                    + ITEM_WIDTHS[item.kind] / 2 for item in items)
         seen = []
 
@@ -557,9 +557,8 @@ def verify_stage_arrows(output):
             elif stages[0].number == 2:
                 player = players[-1]
                 if tick - entered_at == 5:
-                    assert player.x == STAGE_ENTRY_LEFT_X and not controls.held
-                    push("down", "right")
-                    push("down", "lshift")
+                    assert player.x > STAGE_ENTRY_LEFT_X and player.state == "RUN"
+                    assert controls.held == {"right", "lshift"}
                     phase = "approach"
                 elif phase == "approach":
                     index = player.pickup_target(stages[0].items)
@@ -603,7 +602,7 @@ def verify_stage_arrows(output):
                     initial_items = tuple(stage.items)
                     assert len(initial_items) == count
                     assert {item.kind for item in initial_items} == set(ITEM_WIDTHS)
-                    assert player.weapon == "steel_pipe" and player.state == "IDLE"
+                    assert player.weapon == "steel_pipe" and player.state == "RUN"
                     assert (player.x, player.foot_y) == (STAGE_ENTRY_LEFT_X, GROUND_Y)
                     shot = "second-spawn"
                 elif phase in ("first", "approach"):
@@ -648,6 +647,7 @@ def verify_stage_roundtrip(output):
     first_items = [Item("steel_pipe", WIDTH / 2), Item("dagger", 400), Item("dagger", 800)]
     first_snapshot = None
     second_original, second_dropped = None, None
+    second_drop_x = None
     phase, tick, phase_at = "forward", -1, 0
 
     def make_stage(items):
@@ -656,7 +656,7 @@ def verify_stage_roundtrip(output):
         return stage
 
     def feed(controls):
-        nonlocal tick, phase, phase_at
+        nonlocal tick, phase, phase_at, second_drop_x
         tick += 1
         if tick == 0:
             poll_events(controls)
@@ -666,10 +666,19 @@ def verify_stage_roundtrip(output):
         elif tick == 1:
             push("down", "right")
             push("down", "lshift")
-        elif phase == "second-entry" and tick - phase_at == 5:
-            push("down", "f")
-            push("up", "f")
-            phase, phase_at = "second-dropped", tick
+        elif phase == "second-entry":
+            age = tick - phase_at
+            if age == 2:
+                assert players[-1].x > STAGE_ENTRY_LEFT_X and players[-1].state == "RUN"
+                push("up", "lshift")
+            elif age == 5:
+                assert players[-1].x > STAGE_ENTRY_LEFT_X and players[-1].state == "WALK"
+                assert controls.held == {"right"}
+                second_drop_x = players[-1].x
+                push("up", "right")
+                push("down", "f")
+                push("up", "f")
+                phase, phase_at = "second-dropped", tick
         elif phase == "second-dropped" and tick - phase_at == 5:
             push("down", "right")
             push("down", "lshift")
@@ -683,11 +692,22 @@ def verify_stage_roundtrip(output):
                 push("up", "right")
                 push("down", "left")
                 phase = "backward"
-        elif phase == "first-return" and tick - phase_at == 5:
-            push("down", "right")
-            push("down", "lshift")
-            phase = "revisit"
+        elif phase == "first-return":
+            age = tick - phase_at
+            if age == 2:
+                assert players[-1].x < STAGE_ENTRY_RIGHT_X and players[-1].state == "RUN"
+                push("up", "lshift")
+            elif age == 5:
+                assert players[-1].x < STAGE_ENTRY_RIGHT_X and players[-1].state == "WALK"
+                assert controls.held == {"left"}
+                push("up", "left")
+                push("down", "right")
+                push("down", "lshift")
+                phase = "revisit"
         elif phase == "second-revisit" and tick - phase_at == 5:
+            assert players[-1].x > STAGE_ENTRY_LEFT_X and players[-1].state == "RUN"
+            push("up", "right")
+            push("up", "lshift")
             push("down", "f")
             push("up", "f")
             phase, phase_at = "recovered", tick
@@ -710,25 +730,30 @@ def verify_stage_roundtrip(output):
             assert player.weapon == "steel_pipe"
             shot = "first"
         elif phase == "forward" and stage.number == 2:
-            self_check = (player.x, player.facing, player.state)
-            assert self_check == (STAGE_ENTRY_LEFT_X, 1, "IDLE")
+            assert (player.x, player.facing, player.state) == (STAGE_ENTRY_LEFT_X, 1, "RUN")
             second_original = tuple(stage.items)
             phase, phase_at = "second-entry", tick
             shot = "second-arrival"
+        elif phase == "second-entry" and tick - phase_at == 3:
+            assert player.x > STAGE_ENTRY_LEFT_X and player.state == "WALK"
+            shot = "second-held-walk"
         elif phase == "second-dropped":
             if second_dropped is None:
                 second_dropped = tuple(stage.items)
             assert tuple(stage.items) == second_dropped and player.weapon is None
-            assert Item("steel_pipe", STAGE_ENTRY_LEFT_X) in stage.items
+            assert Item("steel_pipe", second_drop_x) in stage.items
             shot = "second-dropped"
         elif phase == "inactive":
             assert stage.number == 2 and tuple(stage.items) == second_dropped
             shot = "second-right-inactive"
         elif phase == "backward" and stage.number == 1:
             assert tuple(stage.items) == first_snapshot and player.weapon is None
-            assert (player.x, player.facing, player.state) == (STAGE_ENTRY_RIGHT_X, -1, "IDLE")
+            assert (player.x, player.facing, player.state) == (STAGE_ENTRY_RIGHT_X, -1, "RUN")
             phase, phase_at = "first-return", tick
             shot = "first-return"
+        elif phase == "first-return" and tick - phase_at == 3:
+            assert player.x < STAGE_ENTRY_RIGHT_X and player.state == "WALK"
+            shot = "first-held-walk"
         elif phase == "revisit" and stage.number == 2:
             assert tuple(stage.items) == second_dropped and player.weapon is None
             phase, phase_at = "second-revisit", tick
@@ -751,9 +776,53 @@ def verify_stage_roundtrip(output):
         result = main.run(frame_limit=850)
         spawn.assert_called_once_with(None, spawn_x=STAGE_ENTRY_LEFT_X, stage_number=2)
     assert result["stage"] == 2 and phase == "recovered" and result["frames"] < 850
-    assert len(screenshots) == 7 and not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    assert len(screenshots) == 9 and not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"status": "PASS", "inactive_right": "PASS", "saved_items": "PASS",
-                   "spawn_once": "PASS", "screenshots": screenshots})
+                   "spawn_once": "PASS", "held_movement": "PASS", "shift_release": "PASS",
+                   "screenshots": screenshots})
+    return result
+
+
+def verify_arrow_animation(output):
+    offsets, screenshots = [], []
+
+    def observe_arrows(images, number, elapsed):
+        assert number == 2
+        with (patch.object(images["arrow_left"], "draw", wraps=images["arrow_left"].draw) as left,
+              patch.object(images["arrow_right"], "draw", wraps=images["arrow_right"].draw) as right):
+            draw_stage_arrows(images, number, elapsed)
+            left.assert_called_once()
+            right.assert_called_once()
+            for draw in (left, right):
+                x, y, width, height = draw.call_args.args
+                assert 0 <= x - width / 2 and x + width / 2 <= WIDTH
+                assert y - height / 2 == GROUND_Y and (width, height) == (80, 50)
+            left_offset = left.call_args.args[0] - ARROW_X[-1]
+            right_offset = right.call_args.args[0] - ARROW_X[1]
+            assert abs(left_offset + right_offset) < 1e-6
+            assert abs(right_offset) <= ARROW_SWAY_AMPLITUDE + 1e-6
+            offsets.append(right_offset)
+
+    def observe_health(image, player):
+        draw_health(image, player)
+        shot = None
+        if offsets[-1] >= ARROW_SWAY_AMPLITUDE - 0.2:
+            shot = "arrows-sway-outward"
+        elif offsets[-1] <= -ARROW_SWAY_AMPLITUDE + 0.2:
+            shot = "arrows-sway-inward"
+        if shot and shot not in screenshots:
+            capture(output / f"{shot}.png")
+            screenshots.append(shot)
+
+    with (patch("main.Stage", side_effect=lambda items: Stage(items=items, number=2)),
+          patch("main.spawn_items", return_value=spawn_items(Random(1), stage_number=2)),
+          patch("main.draw_stage_arrows", side_effect=observe_arrows),
+          patch("main.draw_health", side_effect=observe_health)):
+        result = main.run(frame_limit=120)
+    assert min(offsets) < -5.8 and max(offsets) > 5.8
+    assert len(screenshots) == 2 and not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"status": "PASS", "min_offset": min(offsets), "max_offset": max(offsets),
+                   "screenshots": screenshots})
     return result
 
 
@@ -861,6 +930,7 @@ def verify():
                    "drop_and_hint": verify_drop_and_hint(output),
                    "stage_arrows": verify_stage_arrows(output), "stage_image_load_cleanup": "PASS",
                    "stage_roundtrip": verify_stage_roundtrip(output),
+                   "arrow_animation": verify_arrow_animation(output),
                    "air_drop": verify_air_drop(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))

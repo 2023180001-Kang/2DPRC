@@ -18,8 +18,8 @@ from rendering import draw_background, draw_character, draw_health, draw_items, 
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
     AIR_DROP_HEIGHT, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
-    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_SPAWN_PADDING, PORTAL_WIDTH, PORTAL_X,
-    SECOND_STAGE_SPAWN_X, WIDTH,
+    ARROW_SPAWN_PADDING, ARROW_WIDTH, ARROW_X, ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS,
+    PLAYER_HALF_WIDTH, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WIDTH,
 )
 
 
@@ -214,7 +214,7 @@ def verify_item_spawns(output):
         items = spawn_items(Random(seed))
         assert len(items) == count
         assert {item.kind for item in items} == set(ITEM_WIDTHS)
-        assert all(abs(item.x - PORTAL_X) > PORTAL_WIDTH / 2 + PORTAL_SPAWN_PADDING
+        assert all(abs(item.x - ARROW_X[1]) > ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING
                    + ITEM_WIDTHS[item.kind] / 2 for item in items)
         seen = []
 
@@ -524,7 +524,7 @@ def verify_air_drop(output):
     return {"status": "PASS", "cases": cases}
 
 
-def verify_portal(output):
+def verify_stage_arrows(output):
     layouts = []
     for seed, count in ((1, 3), (0, 4), (5, 5)):
         stages, screenshots = [], []
@@ -557,7 +557,7 @@ def verify_portal(output):
             elif stages[0].number == 2:
                 player = players[-1]
                 if tick - entered_at == 5:
-                    assert player.x == SECOND_STAGE_SPAWN_X and not controls.held
+                    assert player.x == STAGE_ENTRY_LEFT_X and not controls.held
                     push("down", "right")
                     push("down", "lshift")
                     phase = "approach"
@@ -594,7 +594,7 @@ def verify_portal(output):
             if tick == 0:
                 assert stage.number == 1 and player.weapon == "steel_pipe"
                 shot = "first-map"
-            elif stage.number == 1 and player.x >= PORTAL_X - PORTAL_WIDTH / 2 - 32:
+            elif stage.number == 1 and player.x >= ARROW_X[1] - ARROW_WIDTH / 2 - 32:
                 shot = "approach"
             elif stage.number == 2:
                 assert player.health == 3
@@ -604,7 +604,7 @@ def verify_portal(output):
                     assert len(initial_items) == count
                     assert {item.kind for item in initial_items} == set(ITEM_WIDTHS)
                     assert player.weapon == "steel_pipe" and player.state == "IDLE"
-                    assert (player.x, player.foot_y) == (SECOND_STAGE_SPAWN_X, GROUND_Y)
+                    assert (player.x, player.foot_y) == (STAGE_ENTRY_LEFT_X, GROUND_Y)
                     shot = "second-spawn"
                 elif phase in ("first", "approach"):
                     assert tuple(stage.items) == initial_items
@@ -617,7 +617,7 @@ def verify_portal(output):
                 elif phase == "jump":
                     assert tuple(stage.items) == picked_items and player.weapon == expected_weapon
                     shot = "second-jump"
-            filename = f"portal-{seed}-{shot}"
+            filename = f"arrows-{seed}-{shot}"
             if shot and filename not in screenshots:
                 capture(output / f"{filename}.png")
                 screenshots.append(filename)
@@ -633,7 +633,7 @@ def verify_portal(output):
               patch("main.draw_character", side_effect=observe_character),
               patch("main.draw_health", side_effect=observe_health)):
             result = main.run(frame_limit=600)
-            spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
+            spawn.assert_called_once_with(None, spawn_x=STAGE_ENTRY_LEFT_X, stage_number=2)
         assert result["stage"] == 2 and phase == "jump" and players[-1].grounded
         assert result["frames"] < 600 and len(screenshots) == 5, (result, screenshots)
         assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
@@ -641,6 +641,120 @@ def verify_portal(output):
                        "screenshots": screenshots, "transition_frame": entered_at})
         layouts.append(result)
     return {"status": "PASS", "layouts": layouts}
+
+
+def verify_stage_roundtrip(output):
+    stages, players, screenshots = [], [], []
+    first_items = [Item("steel_pipe", WIDTH / 2), Item("dagger", 400), Item("dagger", 800)]
+    first_snapshot = None
+    second_original, second_dropped = None, None
+    phase, tick, phase_at = "forward", -1, 0
+
+    def make_stage(items):
+        stage = Stage(items=items)
+        stages.append(stage)
+        return stage
+
+    def feed(controls):
+        nonlocal tick, phase, phase_at
+        tick += 1
+        if tick == 0:
+            poll_events(controls)
+            push("focus", True)
+            push("down", "f")
+            push("up", "f")
+        elif tick == 1:
+            push("down", "right")
+            push("down", "lshift")
+        elif phase == "second-entry" and tick - phase_at == 5:
+            push("down", "f")
+            push("up", "f")
+            phase, phase_at = "second-dropped", tick
+        elif phase == "second-dropped" and tick - phase_at == 5:
+            push("down", "right")
+            push("down", "lshift")
+            phase = "rightward"
+        elif phase == "rightward" and players[-1].x == WIDTH - PLAYER_HALF_WIDTH:
+            phase, phase_at = "inactive", tick
+        elif phase == "inactive":
+            assert stages[0].number == 2 and tuple(stages[0].items) == second_dropped
+            assert controls.held == {"right", "lshift"} and players[-1].weapon is None
+            if tick - phase_at == 10:
+                push("up", "right")
+                push("down", "left")
+                phase = "backward"
+        elif phase == "first-return" and tick - phase_at == 5:
+            push("down", "right")
+            push("down", "lshift")
+            phase = "revisit"
+        elif phase == "second-revisit" and tick - phase_at == 5:
+            push("down", "f")
+            push("up", "f")
+            phase, phase_at = "recovered", tick
+        elif phase == "recovered" and tick - phase_at == 5:
+            push("quit")
+        return poll_events(controls)
+
+    def observe_character(image, player):
+        draw_character(image, player)
+        players.append(player)
+
+    def observe_health(image, player):
+        nonlocal phase, phase_at, first_snapshot, second_original, second_dropped
+        draw_health(image, player)
+        stage = stages[0]
+        assert player.health == 3
+        shot = None
+        if tick == 0:
+            first_snapshot = tuple(stage.items)
+            assert player.weapon == "steel_pipe"
+            shot = "first"
+        elif phase == "forward" and stage.number == 2:
+            self_check = (player.x, player.facing, player.state)
+            assert self_check == (STAGE_ENTRY_LEFT_X, 1, "IDLE")
+            second_original = tuple(stage.items)
+            phase, phase_at = "second-entry", tick
+            shot = "second-arrival"
+        elif phase == "second-dropped":
+            if second_dropped is None:
+                second_dropped = tuple(stage.items)
+            assert tuple(stage.items) == second_dropped and player.weapon is None
+            assert Item("steel_pipe", STAGE_ENTRY_LEFT_X) in stage.items
+            shot = "second-dropped"
+        elif phase == "inactive":
+            assert stage.number == 2 and tuple(stage.items) == second_dropped
+            shot = "second-right-inactive"
+        elif phase == "backward" and stage.number == 1:
+            assert tuple(stage.items) == first_snapshot and player.weapon is None
+            assert (player.x, player.facing, player.state) == (STAGE_ENTRY_RIGHT_X, -1, "IDLE")
+            phase, phase_at = "first-return", tick
+            shot = "first-return"
+        elif phase == "revisit" and stage.number == 2:
+            assert tuple(stage.items) == second_dropped and player.weapon is None
+            phase, phase_at = "second-revisit", tick
+            shot = "second-revisit"
+        elif phase == "recovered":
+            assert player.weapon == "steel_pipe" and tuple(stage.items) == second_original
+            shot = "recovered"
+        filename = f"arrows-roundtrip-{shot}"
+        if shot and filename not in screenshots:
+            capture(output / f"{filename}.png")
+            screenshots.append(filename)
+
+    with (patch("main.Stage", side_effect=make_stage),
+          patch("main.spawn_items", return_value=first_items),
+          patch("game.spawn_items", side_effect=lambda rng=None, spawn_x=WIDTH / 2, stage_number=1:
+                spawn_items(Random(1), spawn_x=spawn_x, stage_number=stage_number)) as spawn,
+          patch("main.poll_events", side_effect=feed),
+          patch("main.draw_character", side_effect=observe_character),
+          patch("main.draw_health", side_effect=observe_health)):
+        result = main.run(frame_limit=850)
+        spawn.assert_called_once_with(None, spawn_x=STAGE_ENTRY_LEFT_X, stage_number=2)
+    assert result["stage"] == 2 and phase == "recovered" and result["frames"] < 850
+    assert len(screenshots) == 7 and not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+    result.update({"status": "PASS", "inactive_right": "PASS", "saved_items": "PASS",
+                   "spawn_once": "PASS", "screenshots": screenshots})
+    return result
 
 
 def verify():
@@ -692,8 +806,9 @@ def verify():
         if tick in shots:
             capture(output / f"{shots[tick]}.png")
 
-    # Exercise both movement boundaries on map 2; the actual portal path is checked separately.
+    # Isolate locomotion boundaries; active exits and round trips are checked separately.
     with (patch("main.Stage", side_effect=lambda items: Stage(items=items, number=2)),
+          patch("game.Stage.try_transition", return_value=False),
           patch("main.poll_events", side_effect=feed),
           patch("main.draw_character", side_effect=observe),
           patch("main.draw_health", side_effect=observe_health)):
@@ -725,7 +840,7 @@ def verify():
     with tempfile.TemporaryDirectory(dir=output) as directory:
         Image.new("RGBA", (16, 16), "black").save(Path(directory) / IMAGE_FILES["background"])
         with patch("main.load_images", side_effect=lambda: load_images(directory)):
-            for missing in ("character", "health_bar", "dagger", "steel_pipe", "second_background", "portal"):
+            for missing in ("character", "health_bar", "dagger", "steel_pipe", "second_background", "arrow_left", "arrow_right"):
                 try:
                     main.run(frame_limit=1)
                 except ResourceError as error:
@@ -744,7 +859,8 @@ def verify():
                    "jump": verify_jumping(output), "pickup": verify_pickup(output),
                    "double_jump": verify_double_jumping(output),
                    "drop_and_hint": verify_drop_and_hint(output),
-                   "portal": verify_portal(output), "stage_image_load_cleanup": "PASS",
+                   "stage_arrows": verify_stage_arrows(output), "stage_image_load_cleanup": "PASS",
+                   "stage_roundtrip": verify_stage_roundtrip(output),
                    "air_drop": verify_air_drop(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))

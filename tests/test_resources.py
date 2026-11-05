@@ -41,7 +41,7 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(resources.IMAGE_FILES, {
             "background": "newfirststage.png",
             "character": "assets/character.png",
-            "health_bar": "hp_preview_100.png",
+            "health_bar": "HoodMan_HP바_투명배경_pico2d.png",
             "dagger": "dagger_item_pico2d.png",
             "steel_pipe": "steel_pipe_item_pico2d.png",
             "second_background": "firstSecondmap.png",
@@ -125,7 +125,7 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "hp_preview_100.png"), str(caught.exception))
+        self.assertIn(str(self.root / "HoodMan_HP바_투명배경_pico2d.png"), str(caught.exception))
         self.assertEqual(self.load_image.call_args_list, [
             call(str(self.root / "newfirststage.png")),
             call(str(self.root / "assets/character.png")),
@@ -143,9 +143,9 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "hp_preview_100.png"), str(caught.exception))
+        self.assertIn(str(self.root / "HoodMan_HP바_투명배경_pico2d.png"), str(caught.exception))
         self.assertIs(caught.exception.__cause__, error)
-        self.load_image.assert_called_with(str(self.root / "hp_preview_100.png"))
+        self.load_image.assert_called_with(str(self.root / "HoodMan_HP바_투명배경_pico2d.png"))
         self.assertEqual(self.destroy_texture.call_args_list, [
             call(sentinel.background_texture), call(sentinel.character_texture),
         ])

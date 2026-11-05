@@ -37,7 +37,7 @@ def draw_character(image, player):
 def draw_health(image, player):
     """Draw the supplied 100% HP artwork; damage and healing are not implemented yet."""
     height = HEALTH_BAR_WIDTH * image.h / image.w
-    image.draw(WIDTH - HUD_MARGIN - HEALTH_BAR_WIDTH / 2,
+    image.draw(HUD_MARGIN + HEALTH_BAR_WIDTH / 2,
                HEIGHT - HUD_MARGIN - height / 2, HEALTH_BAR_WIDTH, height)
 
 

@@ -17,18 +17,20 @@ class HealthTests(unittest.TestCase):
     def test_initial_health_draws_one_full_hp_bar_without_hearts(self):
         player = Player()
         self.assertEqual(player.health, 3)
-        self.assertEqual(IMAGE_FILES["health_bar"], "hp_preview_100.png")
+        self.assertEqual(IMAGE_FILES["health_bar"], "HoodMan_HP바_투명배경_pico2d.png")
+        self.assertNotIn("hp_preview_100.png", IMAGE_FILES.values())
         self.assertNotIn("Heart.png", IMAGE_FILES.values())
         draw_health(self.image, player)
         self.image.draw.assert_called_once()
         self.image.clip_draw.assert_not_called()
 
-    def test_top_right_position_has_fixed_margin_and_stays_on_screen(self):
+    def test_top_left_position_has_fixed_margin_and_stays_on_screen(self):
         draw_health(self.image, Player())
         x, y, width, height = self.image.draw.call_args.args
-        self.assertEqual(x + width / 2, WIDTH - HUD_MARGIN)
+        self.assertEqual(x - width / 2, HUD_MARGIN)
         self.assertEqual(y + height / 2, HEIGHT - HUD_MARGIN)
         self.assertGreaterEqual(x - width / 2, 0)
+        self.assertLessEqual(x + width / 2, WIDTH)
         self.assertGreaterEqual(y - height / 2, 0)
 
     def test_bar_preserves_source_aspect_ratio(self):

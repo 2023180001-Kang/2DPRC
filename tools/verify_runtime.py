@@ -18,7 +18,8 @@ from rendering import draw_background, draw_character, draw_health, draw_items, 
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
     AIR_DROP_HEIGHT, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
-    ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_WIDTH, ARROW_X, ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS,
+    ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X,
+    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS,
     PLAYER_HALF_WIDTH, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WIDTH,
 )
 
@@ -826,6 +827,137 @@ def verify_arrow_animation(output):
     return result
 
 
+def verify_air_stage_transition(output):
+    cases = []
+    for source, direction, used in ((1, 1, 1), (2, -1, 2)):
+        stages, players, screenshots = [], [], []
+        tick, transferred_at, landed_at, retried_at = -1, None, None, None
+        before_transfer, extra_speed = None, None
+        key = "right" if direction > 0 else "left"
+        destination = source + direction
+        entry_x = STAGE_ENTRY_LEFT_X if direction > 0 else STAGE_ENTRY_RIGHT_X
+        start_x = ARROW_X[direction] - direction * (ARROW_TRIGGER_HALF_WIDTH + 96)
+
+        def make_stage(items):
+            stage = Stage(items=items, number=source)
+            original = stage.try_transition
+
+            def track_transition(player, controls, rng=None):
+                nonlocal transferred_at, before_transfer
+                before = vars(player).copy()
+                held = controls.held.copy()
+                changed = original(player, controls, rng)
+                if changed:
+                    assert transferred_at is None and stage.number == destination
+                    assert before["state"] == "JUMP" and before["jump_count"] == used
+                    assert before["foot_y"] > GROUND_Y
+                    assert vars(player) == dict(before, x=entry_x)
+                    assert controls.held == held
+                    transferred_at, before_transfer = tick, before
+                return changed
+
+            stage.try_transition = track_transition
+            stages.append(stage)
+            return stage
+
+        def feed(controls):
+            nonlocal tick, extra_speed, retried_at
+            tick += 1
+            if tick == 0:
+                poll_events(controls)
+                push("focus", True)
+                for name in (key, "lshift", "f", "space"):
+                    push("down", name)
+            elif transferred_at is None:
+                if used == 2 and tick == 5:
+                    push("up", "space")
+                    push("down", "space")
+            else:
+                age = tick - transferred_at
+                if age == 5:
+                    extra_speed = players[-1].vertical_speed
+                    push("up", "space")
+                    push("down", "space")
+                if age == 10:
+                    push("up", key)
+                    push("up", "lshift")
+                if landed_at is not None and retried_at is None:
+                    assert players[-1].grounded and players[-1].jump_count == 0
+                    assert controls.held == {"space", "f"}
+                    if tick - landed_at == 5:
+                        push("up", "space")
+                        push("down", "space")
+                        retried_at = tick
+                elif retried_at is not None and tick - retried_at == 10:
+                    push("quit")
+            return poll_events(controls)
+
+        def observe_character(image, player):
+            draw_character(image, player)
+            players.append(player)
+
+        def observe_health(image, player):
+            nonlocal landed_at
+            draw_health(image, player)
+            assert player.health == 3 and player.weapon == "steel_pipe"
+            shot = None
+            if transferred_at is None:
+                assert stages[0].number == source
+                if abs(player.x - ARROW_X[direction]) <= ARROW_TRIGGER_HALF_WIDTH + 24:
+                    assert player.state == "JUMP"
+                    shot = "source-near"
+            else:
+                assert stages[0].number == destination
+                age = tick - transferred_at
+                if age == 0:
+                    assert player.x == entry_x and player.state == "JUMP"
+                    shot = "transferred"
+                elif age == 3:
+                    assert player.state == "JUMP" and player.jump_count == used
+                    assert (player.x - entry_x) * direction > 0
+                    shot = "continued"
+                elif age == 5:
+                    assert player.state == "JUMP" and player.jump_count == 2
+                    if used == 1:
+                        assert player.vertical_speed > extra_speed
+                    else:
+                        assert player.vertical_speed < extra_speed
+                    shot = "extra-request"
+                elif retried_at is not None:
+                    assert player.state == "JUMP" and player.jump_count == 1
+                    shot = "jump-again"
+                elif player.grounded:
+                    assert player.jump_count == 0 and player.state == "IDLE"
+                    if landed_at is None:
+                        landed_at = tick
+                    shot = "landed"
+            filename = f"air-stage-{source}-{shot}"
+            if shot and filename not in screenshots:
+                capture(output / f"{filename}.png")
+                screenshots.append(filename)
+
+        with (patch("main.Player", return_value=main.Player(x=start_x)),
+              patch("main.Stage", side_effect=make_stage),
+              patch("main.spawn_items", return_value=[Item("steel_pipe", start_x)]),
+              patch("game.spawn_items", side_effect=lambda rng=None, spawn_x=WIDTH / 2, stage_number=1:
+                    spawn_items(Random(1), spawn_x=spawn_x, stage_number=stage_number)) as spawn,
+              patch("main.poll_events", side_effect=feed),
+              patch("main.draw_character", side_effect=observe_character),
+              patch("main.draw_health", side_effect=observe_health)):
+            result = main.run(frame_limit=250)
+            spawn.assert_called_once_with(None, spawn_x=entry_x, stage_number=destination)
+        assert result["stage"] == destination and result["frames"] < 250
+        assert before_transfer is not None and landed_at is not None and retried_at is not None
+        assert len(screenshots) == 6 and not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+        result.update({"status": "PASS", "source": source, "jump_count_at_transition": used,
+                       "transition_height": before_transfer["foot_y"] - GROUND_Y,
+                       "transition_speed": before_transfer["vertical_speed"],
+                       "jump_state_preserved": "PASS", "remaining_jump": "PASS",
+                       "landing_and_retry": "PASS", "screenshots": screenshots})
+        cases.append(result)
+    return {"status": "PASS", "cases": cases}
+
+
 def verify():
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
@@ -931,6 +1063,7 @@ def verify():
                    "stage_arrows": verify_stage_arrows(output), "stage_image_load_cleanup": "PASS",
                    "stage_roundtrip": verify_stage_roundtrip(output),
                    "arrow_animation": verify_arrow_animation(output),
+                   "air_stage_transition": verify_air_stage_transition(output),
                    "air_drop": verify_air_drop(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))

@@ -4,7 +4,7 @@ from math import ceil
 
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
-    HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, MAX_HEALTH, WEAPON_HAND_OFFSETS, WIDTH,
+    HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
@@ -25,11 +25,10 @@ def draw_character(image, player):
 
 
 def draw_health(image, player):
-    health = max(0, min(player.health, MAX_HEALTH))
-    for index in range(health):
-        x = WIDTH - HUD_MARGIN - HEART_SIZE / 2 - index * (HEART_SIZE + HEART_GAP)
-        y = HEIGHT - HUD_MARGIN - HEART_SIZE / 2
-        image.clip_draw(0, 0, image.w // 2, image.h, x, y, HEART_SIZE, HEART_SIZE)
+    """Draw the supplied 100% HP artwork; damage and healing are not implemented yet."""
+    height = HEALTH_BAR_WIDTH * image.h / image.w
+    image.draw(WIDTH - HUD_MARGIN - HEALTH_BAR_WIDTH / 2,
+               HEIGHT - HUD_MARGIN - height / 2, HEALTH_BAR_WIDTH, height)
 
 
 def draw_items(images, items):

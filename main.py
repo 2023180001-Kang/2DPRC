@@ -46,7 +46,7 @@ def run(frame_limit=None):
             draw_items(images, items)
             draw_character(images["character"], player)
             draw_held_weapon(images, player)
-            draw_health(images["heart"], player)
+            draw_health(images["health_bar"], player)
             pico2d.update_canvas()
             frames += 1
             sleep(max(0.0, 1.0 / TARGET_FPS - (perf_counter() - frame_started)))

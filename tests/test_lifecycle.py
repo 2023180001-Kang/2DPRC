@@ -12,7 +12,7 @@ class LifecycleTests(unittest.TestCase):
         self.images = {
             "background": Mock(texture=sentinel.background_texture),
             "character": Mock(texture=sentinel.character_texture),
-            "heart": Mock(texture=sentinel.heart_texture),
+            "health_bar": Mock(texture=sentinel.health_bar_texture),
             "dagger": Mock(texture=sentinel.dagger_texture),
             "steel_pipe": Mock(texture=sentinel.steel_pipe_texture),
         }

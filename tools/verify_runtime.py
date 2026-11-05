@@ -409,7 +409,7 @@ def verify():
     with tempfile.TemporaryDirectory(dir=output) as directory:
         Image.new("RGBA", (16, 16), "black").save(Path(directory) / IMAGE_FILES["background"])
         with patch("main.load_images", side_effect=lambda: load_images(directory)):
-            for missing in ("character", "heart", "dagger", "steel_pipe"):
+            for missing in ("character", "health_bar", "dagger", "steel_pipe"):
                 try:
                     main.run(frame_limit=1)
                 except ResourceError as error:
@@ -422,7 +422,7 @@ def verify():
                 Image.new("RGBA", (16, 16), "white").save(fixture)
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"scripted_input": "PASS", "window_close": "PASS", "partial_load_cleanup": "PASS",
-                   "heart_load_cleanup": "PASS", "health_hud": "PASS",
+                   "health_bar_load_cleanup": "PASS", "health_hud": "PASS",
                    "item_load_cleanup": "PASS", "item_spawns": verify_item_spawns(output),
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
                    "jump": verify_jumping(output), "pickup": verify_pickup(output),

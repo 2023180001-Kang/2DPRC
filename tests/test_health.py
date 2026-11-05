@@ -5,47 +5,41 @@ from PIL import Image
 
 from game import Player
 from rendering import draw_health
-from resources import ROOT
-from settings import HEART_GAP, HEART_SIZE, HEIGHT, HUD_MARGIN, MAX_HEALTH, WIDTH
+from resources import IMAGE_FILES, ROOT
+from settings import HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, WIDTH
 
 
 class HealthTests(unittest.TestCase):
-    def test_initial_health_draws_three_red_hearts(self):
+    def setUp(self):
+        with Image.open(ROOT / IMAGE_FILES["health_bar"]) as source:
+            self.image = Mock(w=source.width, h=source.height)
+
+    def test_initial_health_draws_one_full_hp_bar_without_hearts(self):
         player = Player()
         self.assertEqual(player.health, 3)
-        with Image.open(ROOT / "Heart.png") as source:
-            image = Mock(w=source.width, h=source.height)
-            self.assertEqual(source.convert("RGBA").getchannel("A").getextrema()[0], 0)
-        draw_health(image, player)
-        self.assertEqual(image.clip_draw.call_count, 3)
-        for draw in image.clip_draw.call_args_list:
-            self.assertEqual(draw.args[:4], (0, 0, image.w // 2, image.h))
+        self.assertEqual(IMAGE_FILES["health_bar"], "hp_preview_100.png")
+        self.assertNotIn("Heart.png", IMAGE_FILES.values())
+        draw_health(self.image, player)
+        self.image.draw.assert_called_once()
+        self.image.clip_draw.assert_not_called()
 
-    def test_top_right_positions_have_fixed_margin_and_spacing(self):
-        image = Mock(w=1784, h=888)
-        draw_health(image, Player())
-        positions = [draw.args[4:6] for draw in image.clip_draw.call_args_list]
-        self.assertEqual(positions[0], (WIDTH - HUD_MARGIN - HEART_SIZE / 2,
-                                       HEIGHT - HUD_MARGIN - HEART_SIZE / 2))
-        for index, (x, y) in enumerate(positions):
-            self.assertEqual(x, positions[0][0] - index * (HEART_SIZE + HEART_GAP))
-            self.assertEqual(y, positions[0][1])
-            self.assertGreaterEqual(x - HEART_SIZE / 2, 0)
-            self.assertLessEqual(x + HEART_SIZE / 2, WIDTH)
-            self.assertGreaterEqual(y - HEART_SIZE / 2, 0)
-            self.assertLessEqual(y + HEART_SIZE / 2, HEIGHT)
+    def test_top_right_position_has_fixed_margin_and_stays_on_screen(self):
+        draw_health(self.image, Player())
+        x, y, width, height = self.image.draw.call_args.args
+        self.assertEqual(x + width / 2, WIDTH - HUD_MARGIN)
+        self.assertEqual(y + height / 2, HEIGHT - HUD_MARGIN)
+        self.assertGreaterEqual(x - width / 2, 0)
+        self.assertGreaterEqual(y - height / 2, 0)
 
-    def test_health_count_is_clamped_to_three(self):
-        for health in (-1, 0, 1, 2, 3, 10):
-            with self.subTest(health=health):
-                image = Mock(w=1784, h=888)
-                draw_health(image, Player(health=health))
-                self.assertEqual(image.clip_draw.call_count, max(0, min(health, MAX_HEALTH)))
+    def test_bar_preserves_source_aspect_ratio(self):
+        draw_health(self.image, Player())
+        _, _, width, height = self.image.draw.call_args.args
+        self.assertEqual(width, HEALTH_BAR_WIDTH)
+        self.assertAlmostEqual(width / height, self.image.w / self.image.h)
 
     def test_position_does_not_follow_player_or_jump(self):
-        image = Mock(w=1784, h=888)
-        draw_health(image, Player())
-        expected = image.clip_draw.call_args_list[:]
-        image.reset_mock()
-        draw_health(image, Player(x=100, foot_y=400, state="JUMP"))
-        self.assertEqual(image.clip_draw.call_args_list, expected)
+        draw_health(self.image, Player())
+        expected = self.image.draw.call_args
+        self.image.reset_mock()
+        draw_health(self.image, Player(x=100, foot_y=400, state="JUMP"))
+        self.assertEqual(self.image.draw.call_args, expected)

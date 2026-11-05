@@ -7,7 +7,8 @@ import sdl2
 
 ROOT = Path(__file__).resolve().parent
 IMAGE_FILES = {
-    "background": "newfirststage.png", "character": "assets/character.png", "heart": "Heart.png",
+    "background": "newfirststage.png", "character": "assets/character.png",
+    "health_bar": "hp_preview_100.png",
     "dagger": "dagger_item_pico2d.png", "steel_pipe": "steel_pipe_item_pico2d.png",
 }
 

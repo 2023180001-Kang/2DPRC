@@ -11,11 +11,11 @@ class ResourceTests(unittest.TestCase):
         self.root = resources.ROOT / "mock-resources"
         self.background = Mock(texture=sentinel.background_texture)
         self.character = Mock(texture=sentinel.character_texture)
-        self.heart = Mock(texture=sentinel.heart_texture)
+        self.health_bar = Mock(texture=sentinel.health_bar_texture)
         self.images = {
             "background": self.background,
             "character": self.character,
-            "heart": self.heart,
+            "health_bar": self.health_bar,
             "dagger": Mock(texture=sentinel.dagger_texture),
             "steel_pipe": Mock(texture=sentinel.steel_pipe_texture),
         }
@@ -39,7 +39,7 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(resources.IMAGE_FILES, {
             "background": "newfirststage.png",
             "character": "assets/character.png",
-            "heart": "Heart.png",
+            "health_bar": "hp_preview_100.png",
             "dagger": "dagger_item_pico2d.png",
             "steel_pipe": "steel_pipe_item_pico2d.png",
         })
@@ -115,13 +115,13 @@ class ResourceTests(unittest.TestCase):
         self.assertIsNone(self.background.texture)
         self.destroy_texture.assert_called_once_with(sentinel.background_texture)
 
-    def test_missing_heart_releases_previous_images(self):
+    def test_missing_health_bar_releases_previous_images(self):
         self.is_file.side_effect = [True, True, False]
 
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "Heart.png"), str(caught.exception))
+        self.assertIn(str(self.root / "hp_preview_100.png"), str(caught.exception))
         self.assertEqual(self.load_image.call_args_list, [
             call(str(self.root / "newfirststage.png")),
             call(str(self.root / "assets/character.png")),
@@ -132,16 +132,16 @@ class ResourceTests(unittest.TestCase):
         self.assertIsNone(self.background.texture)
         self.assertIsNone(self.character.texture)
 
-    def test_corrupt_heart_releases_previous_images(self):
-        error = OSError("mock heart decode failure")
+    def test_corrupt_health_bar_releases_previous_images(self):
+        error = OSError("mock health bar decode failure")
         self.load_image.side_effect = [self.background, self.character, error]
 
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "Heart.png"), str(caught.exception))
+        self.assertIn(str(self.root / "hp_preview_100.png"), str(caught.exception))
         self.assertIs(caught.exception.__cause__, error)
-        self.load_image.assert_called_with(str(self.root / "Heart.png"))
+        self.load_image.assert_called_with(str(self.root / "hp_preview_100.png"))
         self.assertEqual(self.destroy_texture.call_args_list, [
             call(sentinel.background_texture), call(sentinel.character_texture),
         ])

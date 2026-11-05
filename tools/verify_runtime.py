@@ -17,7 +17,7 @@ from game import Item, Stage, spawn_items
 from rendering import draw_background, draw_character, draw_health, draw_items, draw_pickup_hint
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
-    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
+    AIR_DROP_HEIGHT, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
     ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X,
     SECOND_STAGE_SPAWN_X, WIDTH,
 )
@@ -257,7 +257,6 @@ def verify_pickup(output):
         26: [("up", "left"), ("up", "rshift")],
         30: [("down", "f"), ("up", "f")],
         40: [("down", "space"), ("up", "space")],
-        45: [("down", "f"), ("up", "f")],
         125: [("down", "f"), ("up", "f")],
         130: [("down", "right")],
         131: [("up", "right")],
@@ -352,7 +351,7 @@ def verify_drop_and_hint(output):
     }
     shots = {0: "hint-out-of-range", 7: "hint-near-before-pickup", 9: "hint-after-swap",
              45: "hint-away-before-drop", 50: "f-drop-on-ground", 51: "f-drop-held-no-repickup",
-             60: "f-repickup", 66: "hint-airborne-no-drop", 140: "f-landed-held"}
+             60: "f-repickup", 66: "hint-airborne-drop", 140: "f-landed-unarmed"}
     records = []
     tick = -1
 
@@ -399,13 +398,128 @@ def verify_drop_and_hint(output):
     assert records[60]["weapon"] == "steel_pipe" and dropped not in records[60]["floor"]
     assert records[60]["hint"] is None
     assert records[66]["state"] == "JUMP" and records[66]["hint"] is None
-    assert records[66]["weapon"] == records[140]["weapon"] == "steel_pipe"
+    assert records[66]["weapon"] is records[140]["weapon"] is None
+    assert records[66]["floor"][-1].falling
+    assert records[140]["floor"][-1] == Item("steel_pipe", records[66]["x"])
+    assert records[140]["hint"] == records[140]["floor"][-1]
     assert records[140]["state"] == "IDLE"
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     result.update({"status": "PASS", "drop_and_repickup": "PASS", "hint_target": "PASS",
-                   "held_f_no_repeat": "PASS", "airborne_no_drop": "PASS",
+                   "held_f_no_repeat": "PASS", "airborne_drop": "PASS",
                    "screenshots": list(shots.values())})
     return result
+
+
+def verify_air_drop(output):
+    cases = []
+    for number in (1, 2):
+        for kind in ITEM_WIDTHS:
+            stages, players, records, screenshots = [], [], [], []
+            tick, dropped_at, landed_at, repicked_at = -1, None, None, None
+            drop_x, drop_y = None, None
+            direction = "left" if kind == "dagger" else "right"
+            phase = "armed"
+
+            def make_stage(items):
+                stage = Stage(items=items, number=number)
+                stages.append(stage)
+                return stage
+
+            def feed(controls):
+                nonlocal tick, phase, dropped_at, landed_at, repicked_at, drop_x, drop_y
+                tick += 1
+                if tick == 0:
+                    poll_events(controls)
+                    push("focus", True)
+                    push("down", "f")
+                    push("up", "f")
+                elif tick in (1, 20):
+                    push("down", "space")
+                    push("up", "space")
+                elif phase == "armed" and players[-1].jump_count == 2 and players[-1].vertical_speed <= 0:
+                    player = players[-1]
+                    drop_x, drop_y = player.x, player.foot_y + AIR_DROP_HEIGHT
+                    push("down", "f")
+                    push("down", direction)
+                    phase, dropped_at = "falling", tick
+                elif phase == "falling":
+                    age = tick - dropped_at
+                    if age in (1, 2):
+                        push("down", "f")
+                    if age == 6:
+                        push("up", direction)
+                    if players[-1].grounded and not stages[0].items[-1].falling:
+                        phase, landed_at = "landed", tick
+                elif phase == "landed" and tick - landed_at == 5:
+                    push("up", "f")
+                    push("down", "f")
+                    phase, repicked_at = "repicked", tick
+                elif phase == "repicked" and tick - repicked_at == 5:
+                    push("quit")
+                return poll_events(controls)
+
+            def observe_character(image, player):
+                draw_character(image, player)
+                players.append(player)
+
+            def observe_hint(images, items, player):
+                target = draw_pickup_hint(images, items, player)
+                assert len(items) + int(player.weapon is not None) == 1
+                if items and items[0].falling:
+                    assert target is None and player.weapon is None
+                records.append({"items": tuple(items), "weapon": player.weapon, "hint": target})
+
+            def observe_health(image, player):
+                draw_health(image, player)
+                assert player.health == 3
+                items = stages[0].items
+                shot = None
+                if tick == 0:
+                    assert player.weapon == kind
+                    shot = "armed"
+                elif phase == "falling":
+                    item = items[0]
+                    assert player.weapon is None and item.x == drop_x
+                    if tick == dropped_at:
+                        assert player.state == "JUMP" and item.falling
+                        assert item.foot_y == drop_y and item.vertical_speed == 0
+                        shot = "released"
+                    elif item.falling and item.foot_y - GROUND_Y < 80:
+                        shot = "near-ground"
+                    elif item.falling and drop_y - item.foot_y > 60:
+                        shot = "falling"
+                elif phase == "landed":
+                    assert items[0] == Item(kind, drop_x)
+                    assert player.weapon is None and player.grounded
+                    assert records[-1]["hint"] == items[0]
+                    shot = "landed"
+                elif phase == "repicked":
+                    assert player.weapon == kind and not items
+                    shot = "repicked"
+                filename = f"air-drop-{number}-{kind}-{shot}"
+                if shot and filename not in screenshots:
+                    capture(output / f"{filename}.png")
+                    screenshots.append(filename)
+
+            with (patch("main.Stage", side_effect=make_stage),
+                  patch("main.spawn_items", return_value=[Item(kind, WIDTH / 2)]),
+                  patch("main.poll_events", side_effect=feed),
+                  patch("main.draw_character", side_effect=observe_character),
+                  patch("main.draw_pickup_hint", side_effect=observe_hint),
+                  patch("main.draw_health", side_effect=observe_health)):
+                result = main.run(frame_limit=300)
+            assert result["stage"] == number and phase == "repicked"
+            assert result["frames"] < 300 and len(screenshots) == 6, (result, screenshots)
+            falling = [record["items"][0] for record in records
+                       if record["items"] and record["items"][0].falling]
+            assert len(falling) > 5 and all(item.x == drop_x for item in falling)
+            assert all(a.foot_y > b.foot_y and a.vertical_speed > b.vertical_speed
+                       for a, b in zip(falling, falling[1:]))
+            assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+            result.update({"status": "PASS", "kind": kind, "release_height": drop_y - GROUND_Y,
+                           "falling_frames": len(falling), "screenshots": screenshots})
+            cases.append(result)
+    return {"status": "PASS", "cases": cases}
 
 
 def verify_portal(output):
@@ -628,7 +742,8 @@ def verify():
                    "jump": verify_jumping(output), "pickup": verify_pickup(output),
                    "double_jump": verify_double_jumping(output),
                    "drop_and_hint": verify_drop_and_hint(output),
-                   "portal": verify_portal(output), "stage_image_load_cleanup": "PASS"})
+                   "portal": verify_portal(output), "stage_image_load_cleanup": "PASS",
+                   "air_drop": verify_air_drop(output)})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 

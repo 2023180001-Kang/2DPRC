@@ -13,12 +13,13 @@ import sdl2
 
 import main
 from events import poll_events
-from game import Item, spawn_items
-from rendering import draw_character, draw_health, draw_items, draw_pickup_hint
+from game import Item, Stage, spawn_items
+from rendering import draw_background, draw_character, draw_health, draw_items, draw_pickup_hint
 from resources import IMAGE_FILES, ROOT, ResourceError, load_images
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, GRAVITY, GROUND_Y, HEIGHT,
-    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, WIDTH,
+    ITEM_WIDTHS, JUMP_SPEED, PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X,
+    SECOND_STAGE_SPAWN_X, WIDTH,
 )
 
 
@@ -407,6 +408,125 @@ def verify_drop_and_hint(output):
     return result
 
 
+def verify_portal(output):
+    layouts = []
+    for seed, count in ((1, 3), (0, 4), (5, 5)):
+        stages, screenshots = [], []
+        loaded, players = {}, []
+        tick, entered_at, picked_at, jumped_at = -1, None, None, None
+        phase, expected_weapon = "first", None
+        initial_items, picked_items = None, None
+
+        def make_stage(items):
+            stage = Stage(items=items)
+            stages.append(stage)
+            return stage
+
+        def remember_images():
+            nonlocal loaded
+            loaded = load_images()
+            return loaded
+
+        def feed(controls):
+            nonlocal tick, phase, expected_weapon, picked_at, jumped_at
+            tick += 1
+            if tick == 0:
+                poll_events(controls)
+                push("focus", True)
+                push("down", "f")
+                push("up", "f")
+            elif tick == 1:
+                push("down", "right")
+                push("down", "lshift")
+            elif stages[0].number == 2:
+                player = players[-1]
+                if tick - entered_at == 5:
+                    assert player.x == SECOND_STAGE_SPAWN_X and not controls.held
+                    push("down", "right")
+                    push("down", "lshift")
+                    phase = "approach"
+                elif phase == "approach":
+                    index = player.pickup_target(stages[0].items)
+                    if index is not None:
+                        expected_weapon = stages[0].items[index].kind
+                        push("up", "right")
+                        push("up", "lshift")
+                        push("down", "f")
+                        push("up", "f")
+                        phase, picked_at = "picked", tick
+                elif phase == "picked" and tick - picked_at == 5:
+                    push("down", "space")
+                    push("up", "space")
+                    phase, jumped_at = "jump", tick
+                elif phase == "jump" and tick - jumped_at > 10 and player.grounded:
+                    push("quit")
+            return poll_events(controls)
+
+        def observe_background(image):
+            assert image is loaded[stages[0].background_key]
+            draw_background(image)
+
+        def observe_character(image, player):
+            draw_character(image, player)
+            players.append(player)
+
+        def observe_health(image, player):
+            nonlocal entered_at, initial_items, picked_items
+            draw_health(image, player)
+            stage = stages[0]
+            shot = None
+            if tick == 0:
+                assert stage.number == 1 and player.weapon == "steel_pipe"
+                shot = "first-map"
+            elif stage.number == 1 and player.x >= PORTAL_X - PORTAL_WIDTH / 2 - 32:
+                shot = "approach"
+            elif stage.number == 2:
+                assert player.health == 3
+                if entered_at is None:
+                    entered_at = tick
+                    initial_items = tuple(stage.items)
+                    assert len(initial_items) == count
+                    assert {item.kind for item in initial_items} == set(ITEM_WIDTHS)
+                    assert player.weapon == "steel_pipe" and player.state == "IDLE"
+                    assert (player.x, player.foot_y) == (SECOND_STAGE_SPAWN_X, GROUND_Y)
+                    shot = "second-spawn"
+                elif phase in ("first", "approach"):
+                    assert tuple(stage.items) == initial_items
+                elif phase == "picked":
+                    assert player.weapon == expected_weapon and len(stage.items) == count
+                    if picked_items is None:
+                        picked_items = tuple(stage.items)
+                    assert tuple(stage.items) == picked_items
+                    shot = "second-pickup"
+                elif phase == "jump":
+                    assert tuple(stage.items) == picked_items and player.weapon == expected_weapon
+                    shot = "second-jump"
+            filename = f"portal-{seed}-{shot}"
+            if shot and filename not in screenshots:
+                capture(output / f"{filename}.png")
+                screenshots.append(filename)
+
+        first_items = [Item("steel_pipe", WIDTH / 2), Item("dagger", 250), Item("dagger", 500)]
+        with (patch("main.Stage", side_effect=make_stage),
+              patch("main.spawn_items", return_value=first_items),
+              patch("game.spawn_items", side_effect=lambda rng=None, spawn_x=WIDTH / 2:
+                    spawn_items(Random(seed), spawn_x=spawn_x)) as spawn,
+              patch("main.load_images", side_effect=remember_images),
+              patch("main.poll_events", side_effect=feed),
+              patch("main.draw_background", side_effect=observe_background),
+              patch("main.draw_character", side_effect=observe_character),
+              patch("main.draw_health", side_effect=observe_health)):
+            result = main.run(frame_limit=600)
+            spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X)
+        assert result["stage"] == 2 and phase == "jump" and players[-1].grounded
+        assert result["frames"] < 600 and len(screenshots) == 5, (result, screenshots)
+        assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+        result.update({"seed": seed, "count": count, "status": "PASS",
+                       "screenshots": screenshots, "transition_frame": entered_at})
+        layouts.append(result)
+    return {"status": "PASS", "layouts": layouts}
+
+
 def verify():
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
@@ -456,7 +576,9 @@ def verify():
         if tick in shots:
             capture(output / f"{shots[tick]}.png")
 
-    with (patch("main.poll_events", side_effect=feed),
+    # Exercise both movement boundaries on map 2; the actual portal path is checked separately.
+    with (patch("main.Stage", side_effect=lambda items: Stage(items=items, number=2)),
+          patch("main.poll_events", side_effect=feed),
           patch("main.draw_character", side_effect=observe),
           patch("main.draw_health", side_effect=observe_health)):
         result = main.run(frame_limit=500)
@@ -487,7 +609,7 @@ def verify():
     with tempfile.TemporaryDirectory(dir=output) as directory:
         Image.new("RGBA", (16, 16), "black").save(Path(directory) / IMAGE_FILES["background"])
         with patch("main.load_images", side_effect=lambda: load_images(directory)):
-            for missing in ("character", "health_bar", "dagger", "steel_pipe"):
+            for missing in ("character", "health_bar", "dagger", "steel_pipe", "second_background", "portal"):
                 try:
                     main.run(frame_limit=1)
                 except ResourceError as error:
@@ -505,7 +627,8 @@ def verify():
                    "screenshots": list(shots.values()), "checkpoints": [records[tick] for tick in expected],
                    "jump": verify_jumping(output), "pickup": verify_pickup(output),
                    "double_jump": verify_double_jumping(output),
-                   "drop_and_hint": verify_drop_and_hint(output)})
+                   "drop_and_hint": verify_drop_and_hint(output),
+                   "portal": verify_portal(output), "stage_image_load_cleanup": "PASS"})
     (output / "runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 

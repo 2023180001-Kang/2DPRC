@@ -9,8 +9,8 @@ from rendering import draw_items
 from resources import IMAGE_FILES, ROOT
 from settings import (
     CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
-    GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH, PORTAL_SPAWN_PADDING, PORTAL_WIDTH, PORTAL_X,
-    SECOND_STAGE_SPAWN_X, WIDTH,
+    ARROW_SPAWN_PADDING, ARROW_WIDTH, ARROW_X, GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH,
+    STAGE_ARROWS, STAGE_ENTRY_LEFT_X, WIDTH,
 )
 
 
@@ -42,26 +42,28 @@ class ItemTests(unittest.TestCase):
     def test_seed_reproduces_layout(self):
         self.assertEqual(spawn_items(Random(17)), spawn_items(Random(17)))
 
-    def test_first_map_items_keep_their_full_width_outside_portal_and_padding(self):
+    def test_both_maps_keep_full_item_width_outside_all_displayed_arrows(self):
         counts = set()
         for seed in range(500):
-            with self.subTest(seed=seed):
-                items = spawn_items(Random(seed))
-                self.assertIn(len(items), (3, 4, 5))
-                self.assertEqual({item.kind for item in items}, set(ITEM_WIDTHS))
-                for item in items:
-                    self.assertGreater(abs(item.x - PORTAL_X),
-                                       PORTAL_WIDTH / 2 + PORTAL_SPAWN_PADDING + ITEM_WIDTHS[item.kind] / 2)
-                counts.add(len(items))
+            for number, entry in ((1, WIDTH / 2), (2, STAGE_ENTRY_LEFT_X)):
+                with self.subTest(seed=seed, stage=number):
+                    items = spawn_items(Random(seed), spawn_x=entry, stage_number=number)
+                    self.assertIn(len(items), (3, 4, 5))
+                    self.assertEqual({item.kind for item in items}, set(ITEM_WIDTHS))
+                    for item in items:
+                        for direction in STAGE_ARROWS[number]:
+                            self.assertGreater(abs(item.x - ARROW_X[direction]),
+                                               ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING + ITEM_WIDTHS[item.kind] / 2)
+                    counts.add(len(items))
         self.assertEqual(counts, {3, 4, 5})
 
-    def test_second_map_can_spawn_in_right_area_without_a_portal(self):
-        used_right_area = False
+    def test_first_map_can_use_left_area_without_a_left_arrow(self):
+        used_left_area = False
         for seed in range(100):
-            items = spawn_items(Random(seed), spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
+            items = spawn_items(Random(seed))
             self.assertIn(len(items), (3, 4, 5))
-            used_right_area |= any(abs(item.x - PORTAL_X) < PORTAL_WIDTH / 2 for item in items)
-        self.assertTrue(used_right_area)
+            used_left_area |= any(abs(item.x - ARROW_X[-1]) < ARROW_WIDTH / 2 for item in items)
+        self.assertTrue(used_left_area)
 
     def test_new_spawns_vary_positions_and_counts(self):
         rng = Random(17)

@@ -5,8 +5,9 @@ from random import Random
 
 from settings import (
     AIR_DROP_HEIGHT, ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
-    PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_SPAWN_PADDING, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_WIDTH, PORTAL_X,
-    RUN_SPEED, SECOND_STAGE_SPAWN_X, WALK_SPEED, WIDTH,
+    ARROW_SPAWN_PADDING, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X,
+    PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_BACKGROUNDS,
+    STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
 )
 
 
@@ -36,12 +37,13 @@ def spawn_items(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
     rng.shuffle(kinds)
     width = max(ITEM_WIDTHS.values())
     jitter = width / 4
-    portal_clearance = PORTAL_WIDTH / 2 + PORTAL_SPAWN_PADDING + width / 2 + jitter
+    arrow_clearance = ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING + width / 2 + jitter
     # Spaced slots keep items apart and leave the player's starting position clear.
-    # Reserve the entire item width plus jitter around the first map's portal.
+    # Reserve full item width and jitter around every displayed arrow, including inactive exits.
     slots = [x for x in range(width, WIDTH - width + 1, 2 * width)
              if abs(x - spawn_x) > PLAYER_HALF_WIDTH + width
-             and (stage_number != 1 or abs(x - PORTAL_X) > portal_clearance)]
+             and all(abs(x - ARROW_X[direction]) > arrow_clearance
+                     for direction in STAGE_ARROWS[stage_number])]
     positions = rng.sample(slots, count)
     return [Item(kind, x + rng.uniform(-jitter, jitter))
             for kind, x in zip(kinds, positions)]
@@ -79,28 +81,40 @@ class Controls:
 class Stage:
     items: list[Item]
     number: int = 1
+    _items_by_stage: dict[int, list[Item]] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self):
+        self._items_by_stage[self.number] = self.items
 
     @property
     def background_key(self):
-        return "background" if self.number == 1 else "second_background"
+        return STAGE_BACKGROUNDS[self.number]
 
     def update_items(self, dt):
         for index, item in enumerate(self.items):
             self.items[index] = item.update(dt)
 
-    def enter_portal(self, player, controls, rng=None):
-        if (self.number != 1 or not player.grounded
-                or abs(player.x - PORTAL_X) > PORTAL_TRIGGER_HALF_WIDTH):
+    def try_transition(self, player, controls, rng=None):
+        if not player.grounded:
             return False
-        self.items = spawn_items(rng, spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
-        self.number = 2
-        player.x = SECOND_STAGE_SPAWN_X
+        direction = next((direction for direction in STAGE_ARROWS[self.number]
+                          if abs(player.x - ARROW_X[direction]) <= ARROW_TRIGGER_HALF_WIDTH), 0)
+        destination = self.number + direction
+        if not direction or destination not in STAGE_BACKGROUNDS:
+            return False
+        entry_x = STAGE_ENTRY_LEFT_X if direction > 0 else STAGE_ENTRY_RIGHT_X
+        if destination not in self._items_by_stage:
+            self._items_by_stage[destination] = spawn_items(rng, spawn_x=entry_x, stage_number=destination)
+        self._items_by_stage[self.number] = self.items
+        self.number = destination
+        self.items = self._items_by_stage[destination]
+        player.x = entry_x
         player.foot_y = GROUND_Y
         player.vertical_speed = 0.0
         player.jump_count = 0
         player.state = "IDLE"
         player.animation_time = 0.0
-        player.facing = 1
+        player.facing = direction
         controls.held.clear()
         controls.jump_requested = controls.pickup_requested = False
         return True

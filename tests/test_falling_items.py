@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 from game import Controls, Item, Player, Stage
 from rendering import draw_falling_items, draw_items, draw_pickup_hint
-from settings import AIR_DROP_HEIGHT, GRAVITY, GROUND_Y, ITEM_WIDTHS, PORTAL_X
+from settings import AIR_DROP_HEIGHT, ARROW_X, GRAVITY, GROUND_Y, ITEM_WIDTHS
 
 
 class FallingItemTests(unittest.TestCase):
@@ -127,13 +127,19 @@ class FallingItemTests(unittest.TestCase):
         self.assertEqual(stage.items[0].x, start_x)
         self.assertLess(stage.items[0].foot_y, start_y)
 
-    def test_portal_replaces_old_map_falling_items_with_new_map_items(self):
-        old_items = [Item("dagger", PORTAL_X, GROUND_Y + 200, falling=True)]
+    def test_return_restores_old_map_falling_items_and_resumes_their_fall(self):
+        old_items = [Item("dagger", ARROW_X[1], GROUND_Y + 200, falling=True)]
         stage = Stage(items=old_items)
-        self.assertTrue(stage.enter_portal(Player(x=PORTAL_X), Controls(), Random(1)))
+        self.assertTrue(stage.try_transition(Player(x=ARROW_X[1]), Controls(), Random(1)))
         self.assertTrue(all(not item.falling and item.foot_y == GROUND_Y for item in stage.items))
         self.assertIsNot(stage.items, old_items)
         self.assertIn(len(stage.items), (3, 4, 5))
+        stage.update_items(0.2)
+        self.assertEqual(old_items[0].foot_y, GROUND_Y + 200)
+        self.assertTrue(stage.try_transition(Player(x=ARROW_X[-1]), Controls()))
+        self.assertIs(stage.items, old_items)
+        stage.update_items(0.2)
+        self.assertLess(old_items[0].foot_y, GROUND_Y + 200)
 
     def test_resting_and_falling_renderers_draw_each_item_once_at_its_height(self):
         images = {kind: Mock(w=880, h=200) for kind in ITEM_WIDTHS}

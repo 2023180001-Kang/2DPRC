@@ -5,9 +5,9 @@ from math import ceil
 from pico2d import draw_rectangle
 
 from settings import (
-    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
+    ARROW_WIDTH, ARROW_X, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
     HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
-    PORTAL_WIDTH, PORTAL_X, PORTAL_Y, WEAPON_HAND_OFFSETS, WIDTH,
+    STAGE_ARROWS, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
@@ -16,11 +16,11 @@ def draw_background(image):
     image.draw(WIDTH / 2, HEIGHT / 2, ceil(image.w * scale), ceil(image.h * scale))
 
 
-def draw_portal(image, stage_number):
-    if stage_number != 1:
-        return
-    height = PORTAL_WIDTH * image.h / image.w
-    image.draw(PORTAL_X, PORTAL_Y, PORTAL_WIDTH, height)
+def draw_stage_arrows(images, stage_number):
+    for direction in STAGE_ARROWS[stage_number]:
+        image = images["arrow_right" if direction > 0 else "arrow_left"]
+        height = ARROW_WIDTH * image.h / image.w
+        image.draw(ARROW_X[direction], GROUND_Y + height / 2, ARROW_WIDTH, height)
 
 
 def draw_character(image, player):

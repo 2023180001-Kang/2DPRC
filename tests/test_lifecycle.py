@@ -7,7 +7,7 @@ import resources
 import sdl2
 
 from game import Item, Player
-from settings import PORTAL_X, SECOND_STAGE_SPAWN_X
+from settings import ARROW_X, STAGE_ENTRY_LEFT_X
 
 
 class LifecycleTests(unittest.TestCase):
@@ -19,7 +19,8 @@ class LifecycleTests(unittest.TestCase):
             "dagger": Mock(texture=sentinel.dagger_texture),
             "steel_pipe": Mock(texture=sentinel.steel_pipe_texture),
             "second_background": Mock(texture=sentinel.second_background_texture),
-            "portal": Mock(texture=sentinel.portal_texture),
+            "arrow_left": Mock(texture=sentinel.arrow_left_texture),
+            "arrow_right": Mock(texture=sentinel.arrow_right_texture),
         }
         self.retained_images = tuple(self.images.values())
         self.textures = {image.texture: image for image in self.retained_images}
@@ -34,7 +35,7 @@ class LifecycleTests(unittest.TestCase):
         self.load_images = Mock(return_value=self.images)
         self.poll_events = Mock(return_value=True)
         self.draw_background = Mock()
-        self.draw_portal = Mock()
+        self.draw_stage_arrows = Mock()
         self.items = []
         self.spawn_items = Mock(return_value=self.items)
         self.draw_items = Mock()
@@ -66,7 +67,7 @@ class LifecycleTests(unittest.TestCase):
                 draw_held_weapon=self.draw_held_weapon,
                 draw_falling_items=self.draw_falling_items,
                 draw_pickup_hint=self.draw_pickup_hint,
-                draw_portal=self.draw_portal,
+                draw_stage_arrows=self.draw_stage_arrows,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
             ),
         ]
@@ -102,7 +103,7 @@ class LifecycleTests(unittest.TestCase):
     def test_normal_frame_releases_images_before_closing_canvas(self):
         drawing = Mock()
         drawing.attach_mock(self.draw_background, "background")
-        drawing.attach_mock(self.draw_portal, "portal")
+        drawing.attach_mock(self.draw_stage_arrows, "arrows")
         drawing.attach_mock(self.draw_items, "items")
         drawing.attach_mock(self.draw_character, "character")
         drawing.attach_mock(self.draw_held_weapon, "weapon")
@@ -129,7 +130,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(player.health, 3)
         self.assertEqual(drawing.mock_calls, [
             call.background(self.retained_images[0]),
-            call.portal(self.retained_images[6], 1),
+            call.arrows(self.images, 1),
             call.items(self.images, self.items),
             call.character(self.retained_images[1], player),
             call.weapon(self.images, player),
@@ -242,7 +243,7 @@ class LifecycleTests(unittest.TestCase):
     def test_missing_or_corrupt_items_and_stage_images_release_previous_textures_before_close(self):
         self.load_images.side_effect = resources.load_images
         textures = list(self.textures)
-        for index, name in enumerate(("dagger", "steel_pipe", "second_background", "portal"), start=3):
+        for index, name in enumerate(("dagger", "steel_pipe", "second_background", "arrow_left", "arrow_right"), start=3):
             for corrupt in (False, True):
                 with self.subTest(item=name, corrupt=corrupt):
                     for texture, image in self.textures.items():
@@ -280,7 +281,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result["frames"], 0)
         self.spawn_items.assert_called_once_with()
         self.draw_background.assert_not_called()
-        self.draw_portal.assert_not_called()
+        self.draw_stage_arrows.assert_not_called()
         self.draw_items.assert_not_called()
         self.draw_character.assert_not_called()
         self.draw_held_weapon.assert_not_called()
@@ -289,19 +290,19 @@ class LifecycleTests(unittest.TestCase):
         self.draw_health.assert_not_called()
         self.assert_images_released_before_close()
 
-    def test_portal_switches_background_items_and_portal_visibility_in_main_loop(self):
-        player = Player(x=PORTAL_X, weapon="dagger", health=2)
+    def test_arrow_switches_background_items_and_arrow_visibility_in_main_loop(self):
+        player = Player(x=ARROW_X[1], weapon="dagger", health=2)
         self.spawn_items.return_value = []
         second_items = [Item("dagger", 400), Item("steel_pipe", 600), Item("dagger", 800)]
         with (patch.object(main, "Player", return_value=player),
               patch("game.spawn_items", return_value=second_items) as spawn):
             result = main.run(frame_limit=2)
         self.assertEqual(result["stage"], 2)
-        spawn.assert_called_once_with(None, spawn_x=SECOND_STAGE_SPAWN_X, stage_number=2)
+        spawn.assert_called_once_with(None, spawn_x=STAGE_ENTRY_LEFT_X, stage_number=2)
         self.assertEqual(self.draw_background.call_args_list, [call(self.retained_images[5])] * 2)
-        self.assertEqual(self.draw_portal.call_args_list, [call(self.retained_images[6], 2)] * 2)
+        self.assertEqual(self.draw_stage_arrows.call_args_list, [call(self.images, 2)] * 2)
         self.assertEqual(self.draw_items.call_args_list, [call(self.images, second_items)] * 2)
-        self.assertEqual((player.x, player.health, player.weapon), (SECOND_STAGE_SPAWN_X, 2, "dagger"))
+        self.assertEqual((player.x, player.health, player.weapon), (STAGE_ENTRY_LEFT_X, 2, "dagger"))
         self.assert_images_released_before_close()
 
 

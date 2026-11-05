@@ -10,7 +10,9 @@ import pico2d.pico2d as core
 from events import poll_events
 from game import Controls, Player, spawn_items
 from resources import ResourceError, load_images, release_images
-from rendering import draw_background, draw_character, draw_health, draw_held_weapon, draw_items
+from rendering import (
+    draw_background, draw_character, draw_health, draw_held_weapon, draw_items, draw_pickup_hint,
+)
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
@@ -24,7 +26,7 @@ def run(frame_limit=None):
         if not core.window or not core.renderer:
             raise RuntimeError(f"Cannot create canvas: {core.SDL_GetError()!r}")
         pico2d.hide_lattice()
-        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap")
+        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap/drop")
         images = load_images()
         player = Player()
         items = spawn_items()
@@ -46,6 +48,7 @@ def run(frame_limit=None):
             draw_items(images, items)
             draw_character(images["character"], player)
             draw_held_weapon(images, player)
+            draw_pickup_hint(images, items, player)
             draw_health(images["health_bar"], player)
             pico2d.update_canvas()
             frames += 1

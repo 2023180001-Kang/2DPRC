@@ -33,6 +33,7 @@ class LifecycleTests(unittest.TestCase):
         self.draw_items = Mock()
         self.draw_character = Mock()
         self.draw_held_weapon = Mock()
+        self.draw_pickup_hint = Mock()
         self.draw_health = Mock()
         patches = [
             patch.multiple(
@@ -55,6 +56,7 @@ class LifecycleTests(unittest.TestCase):
                 draw_health=self.draw_health, spawn_items=self.spawn_items,
                 draw_items=self.draw_items,
                 draw_held_weapon=self.draw_held_weapon,
+                draw_pickup_hint=self.draw_pickup_hint,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
             ),
         ]
@@ -93,6 +95,7 @@ class LifecycleTests(unittest.TestCase):
         drawing.attach_mock(self.draw_items, "items")
         drawing.attach_mock(self.draw_character, "character")
         drawing.attach_mock(self.draw_held_weapon, "weapon")
+        drawing.attach_mock(self.draw_pickup_hint, "hint")
         drawing.attach_mock(self.draw_health, "health")
         drawing.attach_mock(self.update_canvas, "update")
 
@@ -117,6 +120,7 @@ class LifecycleTests(unittest.TestCase):
             call.items(self.images, sentinel.items),
             call.character(self.retained_images[1], player),
             call.weapon(self.images, player),
+            call.hint(self.images, sentinel.items, player),
             call.health(self.retained_images[2], player),
             call.update(),
         ])
@@ -265,6 +269,7 @@ class LifecycleTests(unittest.TestCase):
         self.draw_items.assert_not_called()
         self.draw_character.assert_not_called()
         self.draw_held_weapon.assert_not_called()
+        self.draw_pickup_hint.assert_not_called()
         self.draw_health.assert_not_called()
         self.assert_images_released_before_close()
 

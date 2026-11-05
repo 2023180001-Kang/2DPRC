@@ -27,6 +27,8 @@ HEALTH_BAR_WIDTH = 320
 HUD_MARGIN = 16
 ITEM_WIDTHS = {"dagger": 44, "steel_pipe": 64}
 PICKUP_RADIUS = 56.0
+PICKUP_HINT_SIZE = 22
+PICKUP_HINT_GAP = 10
 # Hand offsets in source pixels from the centered character's feet, before facing flip.
 WEAPON_HAND_OFFSETS = {
     "IDLE": ((24, 72),) * FRAME_COUNT,

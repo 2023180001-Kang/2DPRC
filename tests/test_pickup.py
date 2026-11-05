@@ -178,3 +178,66 @@ class PickupTests(unittest.TestCase):
         player.update(0, controls)
         self.assertFalse(player.grounded)
         self.assertEqual((player.state, player.weapon, items), ("JUMP", "steel_pipe", []))
+
+    def test_no_pickup_target_drops_each_weapon_at_feet_and_conserves_items(self):
+        for weapon in ("dagger", "steel_pipe"):
+            for has_distant_item in (False, True):
+                with self.subTest(weapon=weapon, distant=has_distant_item):
+                    player, controls = Player(weapon=weapon), Controls()
+                    items = [Item("dagger", player.x + PICKUP_RADIUS + 0.001)] if has_distant_item else []
+                    original = items[:]
+                    controls.set_key("f", True)
+                    self.assertTrue(player.pick_up(items, controls))
+                    self.assertIsNone(player.weapon)
+                    self.assertEqual(items, original + [Item(weapon, player.x, GROUND_Y)])
+                    self.assertFalse(controls.pickup_requested)
+
+    def test_target_at_range_boundary_swaps_instead_of_only_dropping(self):
+        player, controls = Player(weapon="dagger"), Controls()
+        items = [Item("steel_pipe", player.x + PICKUP_RADIUS)]
+        controls.set_key("f", True)
+        self.assertTrue(player.pick_up(items, controls))
+        self.assertEqual(player.weapon, "steel_pipe")
+        self.assertEqual(items, [Item("dagger", player.x)])
+
+    def test_drop_requires_release_before_repickup_and_does_not_repeat(self):
+        player, controls, items = Player(weapon="steel_pipe"), Controls(), []
+        controls.set_key("f", True)
+        self.assertTrue(player.pick_up(items, controls))
+        for _ in range(3):
+            controls.set_key("f", True)
+            self.assertFalse(player.pick_up(items, controls))
+            self.assertIsNone(player.weapon)
+            self.assertEqual(items, [Item("steel_pipe", player.x)])
+        controls.set_key("f", False)
+        controls.set_key("f", True)
+        self.assertTrue(player.pick_up(items, controls))
+        self.assertEqual((player.weapon, items), ("steel_pipe", []))
+
+    def test_airborne_drop_request_is_discarded_before_landing(self):
+        player, controls, items = Player(weapon="dagger"), Controls(), []
+        controls.set_key("space", True)
+        player.update(JUMP_DURATION / 4, controls)
+        controls.set_key("f", True)
+        self.assertFalse(player.pick_up(items, controls))
+        self.assertFalse(controls.pickup_requested)
+        player.update(JUMP_DURATION, controls)
+        self.assertFalse(player.pick_up(items, controls))
+        self.assertEqual((player.weapon, items), ("dagger", []))
+
+    def test_no_request_or_unfocused_f_does_not_drop_held_weapon(self):
+        player, controls, items = Player(weapon="dagger"), Controls(focused=False), []
+        self.assertFalse(player.pick_up(items, controls))
+        controls.set_key("f", True)
+        self.assertFalse(player.pick_up(items, controls))
+        self.assertEqual((player.weapon, items), ("dagger", []))
+
+    def test_same_frame_drop_and_jump_leaves_item_on_ground(self):
+        player, controls, items = Player(weapon="dagger"), Controls(), []
+        for key in ("f", "space"):
+            controls.set_key(key, True)
+        self.assertTrue(player.pick_up(items, controls))
+        player.update(0.1, controls)
+        self.assertFalse(player.grounded)
+        self.assertIsNone(player.weapon)
+        self.assertEqual(items, [Item("dagger", player.x, GROUND_Y)])

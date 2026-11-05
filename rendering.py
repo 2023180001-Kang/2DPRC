@@ -2,9 +2,12 @@
 
 from math import ceil
 
+from pico2d import draw_rectangle
+
 from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH,
-    HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, WEAPON_HAND_OFFSETS, WIDTH,
+    HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
+    WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
@@ -37,6 +40,25 @@ def draw_items(images, items):
         width = ITEM_WIDTHS[item.kind]
         height = width * image.h / image.w
         image.draw(item.x, item.foot_y + height / 2, width, height)
+
+
+def draw_pickup_hint(images, items, player):
+    index = player.pickup_target(items)
+    if index is None:
+        return None
+    item = items[index]
+    image = images[item.kind]
+    half = PICKUP_HINT_SIZE / 2
+    x = max(half, min(item.x, WIDTH - half))
+    top = item.foot_y + ITEM_WIDTHS[item.kind] * image.h / image.w
+    y = min(top + PICKUP_HINT_GAP + half, HEIGHT - half)
+    draw_rectangle(x - half, y - half, x + half, y + half, 20, 24, 32, filled=True)
+    draw_rectangle(x - half, y - half, x + half, y + half, 255, 220, 120)
+    # A small pixel-art F avoids an external font dependency.
+    for left, bottom, right, upper in ((-4, -6, -2, 6), (-4, 4, 4, 6), (-4, -1, 3, 1)):
+        draw_rectangle(x + left, y + bottom, x + right, y + upper,
+                       255, 245, 210, filled=True)
+    return item
 
 
 def draw_held_weapon(images, player):

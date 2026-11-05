@@ -84,19 +84,28 @@ class Player:
     def row(self):
         return ANIMATIONS[self.state][0]
 
+    def pickup_target(self, items):
+        """Share the ground/range/nearest-item rule with the interaction hint."""
+        if not self.grounded:
+            return None
+        distance, index = min(
+            (((item.x - self.x) ** 2 + (item.foot_y - self.foot_y) ** 2, index)
+             for index, item in enumerate(items)),
+            default=(float("inf"), None),
+        )
+        return index if distance <= PICKUP_RADIUS ** 2 else None
+
     def pick_up(self, items, controls):
+        """Handle one F press: pick up/swap a nearby weapon, otherwise drop the held one."""
         requested = controls.pickup_requested
         controls.pickup_requested = False
-        if not requested or not self.grounded or not items:
+        if not requested or not self.grounded:
             return False
-        distance, index = min(
-            ((item.x - self.x) ** 2 + (item.foot_y - self.foot_y) ** 2, index)
-            for index, item in enumerate(items)
-        )
-        if distance > PICKUP_RADIUS ** 2:
-            return False
+        index = self.pickup_target(items)
         previous = self.weapon
-        self.weapon = items.pop(index).kind
+        if index is None and previous is None:
+            return False
+        self.weapon = items.pop(index).kind if index is not None else None
         if previous is not None:
             items.append(Item(previous, self.x))
         return True

@@ -97,8 +97,6 @@ class Stage:
             self.items[index] = item.update(dt)
 
     def try_transition(self, player, controls, rng=None):
-        if not player.grounded:
-            return False
         direction = next((direction for direction in STAGE_ARROWS[self.number]
                           if abs(player.x - ARROW_X[direction]) <= ARROW_TRIGGER_HALF_WIDTH), 0)
         destination = self.number + direction
@@ -111,15 +109,16 @@ class Stage:
         self.number = destination
         self.items = self._items_by_stage[destination]
         player.x = entry_x
-        player.foot_y = GROUND_Y
-        player.vertical_speed = 0.0
-        player.jump_count = 0
-        player.state = "IDLE"
-        player.animation_time = 0.0
-        player.facing = direction
         controls.jump_requested = controls.pickup_requested = False
-        # Keep held keys (including F/Space) so movement continues without retriggering taps.
-        player.update(0.0, controls)
+        # Airborne transitions move only x; preserve the entire ongoing jump.
+        if player.grounded:
+            player.foot_y = GROUND_Y
+            player.vertical_speed = 0.0
+            player.jump_count = 0
+            player.state = "IDLE"
+            player.animation_time = 0.0
+            player.facing = direction
+            player.update(0.0, controls)
         return True
 
 

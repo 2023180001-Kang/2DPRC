@@ -23,15 +23,27 @@ class StageTests(unittest.TestCase):
                 self.assertEqual(stage.try_transition(player, Controls(), Random(1)), enters)
                 self.assertEqual(stage.number, 2 if enters else 1)
 
-    def test_airborne_arrow_overlap_waits_until_player_lands(self):
+    def test_airborne_arrow_overlap_preserves_all_jump_fields(self):
         for number, direction in ((1, 1), (2, -1)):
-            for height, speed in ((GROUND_Y + 1, 0), (GROUND_Y, 1), (GROUND_Y, -1)):
-                with self.subTest(stage=number, height=height, speed=speed):
-                    stage = Stage(items=[], number=number)
-                    player = Player(x=ARROW_X[direction], foot_y=height, vertical_speed=speed)
-                    self.assertFalse(stage.try_transition(player, Controls()))
-                    player.update(3, Controls())
-                    self.assertTrue(stage.try_transition(player, Controls()))
+            for height, speed in ((GROUND_Y + 1, 0), (GROUND_Y + 192, 200),
+                                  (GROUND_Y + 384, -200), (GROUND_Y, 1), (GROUND_Y, -1)):
+                for used in (1, 2):
+                    with self.subTest(stage=number, height=height, speed=speed, used=used):
+                        stage = Stage(items=[], number=number, arrow_time=0.4)
+                        player = Player(x=ARROW_X[direction], foot_y=height, vertical_speed=speed,
+                                        state="JUMP", jump_count=used, animation_time=0.4,
+                                        facing=direction, weapon="steel_pipe", health=2)
+                        before = vars(player).copy()
+                        key = "right" if direction > 0 else "left"
+                        controls = Controls(held={key, "rshift", "space", "f"},
+                                            jump_requested=True, pickup_requested=True)
+                        held = controls.held.copy()
+                        self.assertTrue(stage.try_transition(player, controls, Random(1)))
+                        entry = STAGE_ENTRY_LEFT_X if direction > 0 else STAGE_ENTRY_RIGHT_X
+                        self.assertEqual(vars(player), dict(before, x=entry))
+                        self.assertEqual(controls.held, held)
+                        self.assertFalse(controls.jump_requested or controls.pickup_requested)
+                        self.assertEqual(stage.arrow_time, 0.4)
 
     def test_second_stage_left_arrow_return_includes_range_boundary(self):
         for offset, returns in ((-31, False), (-30, True), (0, True), (30, True), (31, False)):

@@ -9,7 +9,7 @@ from rendering import draw_items
 from resources import IMAGE_FILES, ROOT
 from settings import (
     CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
-    ARROW_SPAWN_PADDING, ARROW_WIDTH, ARROW_X, GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH,
+    ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_WIDTH, ARROW_X, GROUND_Y, ITEM_WIDTHS, PLAYER_HALF_WIDTH,
     STAGE_ARROWS, STAGE_ENTRY_LEFT_X, WIDTH,
 )
 
@@ -53,7 +53,8 @@ class ItemTests(unittest.TestCase):
                     for item in items:
                         for direction in STAGE_ARROWS[number]:
                             self.assertGreater(abs(item.x - ARROW_X[direction]),
-                                               ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING + ITEM_WIDTHS[item.kind] / 2)
+                                               ARROW_WIDTH / 2 + ARROW_SWAY_AMPLITUDE
+                                               + ARROW_SPAWN_PADDING + ITEM_WIDTHS[item.kind] / 2)
                     counts.add(len(items))
         self.assertEqual(counts, {3, 4, 5})
 

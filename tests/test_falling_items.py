@@ -56,7 +56,7 @@ class FallingItemTests(unittest.TestCase):
         stage = Stage(items=[resting, Item("dagger", 400, GROUND_Y + 10, falling=True),
                              Item("steel_pipe", 600, GROUND_Y + 300, falling=True)])
         original_list = stage.items
-        stage.update_items(0.2)
+        stage.update(0.2)
         self.assertIs(stage.items, original_list)
         self.assertIs(stage.items[0], resting)
         self.assertFalse(stage.items[1].falling)
@@ -71,7 +71,7 @@ class FallingItemTests(unittest.TestCase):
             self.assertIsNone(draw_pickup_hint(images, stage.items, player))
             rectangle.assert_not_called()
             self.assertFalse(player.pick_up(stage.items, Controls(pickup_requested=True)))
-            stage.update_items(1)
+            stage.update(1)
             self.assertIs(draw_pickup_hint(images, stage.items, player), stage.items[0])
         self.assertTrue(player.pick_up(stage.items, Controls(pickup_requested=True)))
         self.assertEqual((player.weapon, stage.items), ("dagger", []))
@@ -94,7 +94,7 @@ class FallingItemTests(unittest.TestCase):
             controls.set_key("f", True)
             self.assertFalse(player.pick_up(stage.items, controls))
             self.assertEqual(len(stage.items), 1)
-        stage.update_items(2)
+        stage.update(2)
         player.update(2, controls)
         self.assertFalse(player.pick_up(stage.items, controls))
         self.assertIsNone(player.weapon)
@@ -122,7 +122,7 @@ class FallingItemTests(unittest.TestCase):
         player.update(0.2, controls)
         controls.held.clear()
         controls.focused = False
-        stage.update_items(0.2)
+        stage.update(0.2)
         self.assertGreater(player.x, start_x)
         self.assertEqual(stage.items[0].x, start_x)
         self.assertLess(stage.items[0].foot_y, start_y)
@@ -134,11 +134,11 @@ class FallingItemTests(unittest.TestCase):
         self.assertTrue(all(not item.falling and item.foot_y == GROUND_Y for item in stage.items))
         self.assertIsNot(stage.items, old_items)
         self.assertIn(len(stage.items), (3, 4, 5))
-        stage.update_items(0.2)
+        stage.update(0.2)
         self.assertEqual(old_items[0].foot_y, GROUND_Y + 200)
         self.assertTrue(stage.try_transition(Player(x=ARROW_X[-1]), Controls()))
         self.assertIs(stage.items, old_items)
-        stage.update_items(0.2)
+        stage.update(0.2)
         self.assertLess(old_items[0].foot_y, GROUND_Y + 200)
 
     def test_resting_and_falling_renderers_draw_each_item_once_at_its_height(self):

@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, call, patch, sentinel
+from unittest.mock import ANY, Mock, call, patch, sentinel
 
 import main
 import pico2d.pico2d as core
@@ -130,7 +130,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(player.health, 3)
         self.assertEqual(drawing.mock_calls, [
             call.background(self.retained_images[0]),
-            call.arrows(self.images, 1),
+            call.arrows(self.images, 1, ANY),
             call.items(self.images, self.items),
             call.character(self.retained_images[1], player),
             call.weapon(self.images, player),
@@ -300,7 +300,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result["stage"], 2)
         spawn.assert_called_once_with(None, spawn_x=STAGE_ENTRY_LEFT_X, stage_number=2)
         self.assertEqual(self.draw_background.call_args_list, [call(self.retained_images[5])] * 2)
-        self.assertEqual(self.draw_stage_arrows.call_args_list, [call(self.images, 2)] * 2)
+        self.assertEqual(self.draw_stage_arrows.call_args_list, [call(self.images, 2, ANY)] * 2)
         self.assertEqual(self.draw_items.call_args_list, [call(self.images, second_items)] * 2)
         self.assertEqual((player.x, player.health, player.weapon), (STAGE_ENTRY_LEFT_X, 2, "dagger"))
         self.assert_images_released_before_close()

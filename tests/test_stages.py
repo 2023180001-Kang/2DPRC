@@ -8,8 +8,9 @@ from game import Controls, Item, Player, Stage
 from rendering import draw_background, draw_stage_arrows
 from resources import IMAGE_FILES, ROOT
 from settings import (
-    ARROW_SPAWN_PADDING, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X, GROUND_Y,
-    HEIGHT, ITEM_WIDTHS, PLAYER_HALF_WIDTH, STAGE_ARROWS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WIDTH,
+    ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_TRIGGER_HALF_WIDTH,
+    ARROW_WIDTH, ARROW_X, GROUND_Y, HEIGHT, ITEM_WIDTHS, PLAYER_HALF_WIDTH, RUN_SPEED,
+    STAGE_ARROWS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
 )
 
 
@@ -40,7 +41,7 @@ class StageTests(unittest.TestCase):
                 self.assertEqual(stage.try_transition(player, Controls(), Random(1)), returns)
                 self.assertEqual(stage.number, 1 if returns else 2)
 
-    def test_transition_preserves_health_and_weapon_but_resets_motion_and_inputs(self):
+    def test_transition_preserves_held_keys_health_and_weapon_but_clears_tap_requests(self):
         stage = Stage(items=[Item("dagger", 300)])
         player = Player(x=ARROW_X[1], weapon="steel_pipe", health=2, jump_count=2,
                         state="RUN", facing=-1, animation_time=0.7)
@@ -51,8 +52,8 @@ class StageTests(unittest.TestCase):
         self.assertEqual((player.health, player.weapon), (2, "steel_pipe"))
         self.assertEqual((player.x, player.foot_y, player.vertical_speed, player.jump_count),
                          (STAGE_ENTRY_LEFT_X, GROUND_Y, 0, 0))
-        self.assertEqual((player.state, player.facing, player.animation_time), ("IDLE", 1, 0))
-        self.assertEqual(controls.held, set())
+        self.assertEqual((player.state, player.facing, player.animation_time), ("RUN", 1, 0))
+        self.assertEqual(controls.held, {"right", "lshift", "f", "space"})
         self.assertFalse(controls.pickup_requested or controls.jump_requested)
 
     def test_second_stage_spawns_new_three_to_five_items_with_clear_entry(self):
@@ -74,7 +75,7 @@ class StageTests(unittest.TestCase):
                     self.assertGreater(abs(item.x - STAGE_ENTRY_LEFT_X), PLAYER_HALF_WIDTH + half)
                     for direction in STAGE_ARROWS[2]:
                         self.assertGreater(abs(item.x - ARROW_X[direction]),
-                                           ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING + half)
+                                           ARROW_WIDTH / 2 + ARROW_SWAY_AMPLITUDE + ARROW_SPAWN_PADDING + half)
                 ordered = sorted(stage.items, key=lambda item: item.x)
                 for left, right in zip(ordered, ordered[1:]):
                     self.assertGreater(right.x - left.x,
@@ -192,3 +193,61 @@ class StageTests(unittest.TestCase):
         self.assertGreaterEqual(width, WIDTH)
         self.assertGreaterEqual(height, HEIGHT)
         self.assertEqual(Player().foot_y, GROUND_Y)
+
+    def test_forward_and_backward_transitions_continue_walking_or_running_until_release(self):
+        for number, direction, key in ((1, 1, "right"), (2, -1, "left")):
+            for shifts in (set(), {"lshift"}, {"rshift"}, {"lshift", "rshift"}):
+                with self.subTest(stage=number, shifts=shifts):
+                    stage = Stage(items=[], number=number)
+                    player = Player(x=ARROW_X[direction], weapon="dagger")
+                    held = {key, "f", "space"} | shifts
+                    controls = Controls(held=held.copy(), jump_requested=True, pickup_requested=True)
+                    self.assertTrue(stage.try_transition(player, controls, Random(1)))
+                    start_x = player.x
+                    self.assertEqual(controls.held, held)
+                    expected_state = "RUN" if shifts else "WALK"
+                    self.assertEqual(player.state, expected_state)
+                    self.assertFalse(player.pick_up(stage.items, controls))
+                    player.update(0.1, controls)
+                    speed = RUN_SPEED if shifts else WALK_SPEED
+                    self.assertAlmostEqual(player.x, start_x + direction * speed * 0.1)
+                    self.assertTrue(player.grounded)
+                    self.assertEqual((player.weapon, player.jump_count), ("dagger", 0))
+                    controls.set_key(key, False)
+                    stopped_x = player.x
+                    player.update(0.1, controls)
+                    self.assertEqual((player.x, player.state), (stopped_x, "IDLE"))
+
+    def test_arrow_sway_is_bounded_periodic_and_stays_on_screen(self):
+        images = {key: Mock(w=512, h=320) for key in ("arrow_left", "arrow_right")}
+        for elapsed, offset in ((0, 0), (ARROW_SWAY_PERIOD / 4, ARROW_SWAY_AMPLITUDE),
+                                (ARROW_SWAY_PERIOD * 3 / 4, -ARROW_SWAY_AMPLITUDE),
+                                (ARROW_SWAY_PERIOD, 0)):
+            draw_stage_arrows(images, 2, elapsed)
+            for direction, key in ((-1, "arrow_left"), (1, "arrow_right")):
+                x, y, width, height = images[key].draw.call_args.args
+                self.assertAlmostEqual(x, ARROW_X[direction] + direction * offset)
+                self.assertLessEqual(abs(x - ARROW_X[direction]), ARROW_SWAY_AMPLITUDE)
+                self.assertGreaterEqual(x - width / 2, 0)
+                self.assertLessEqual(x + width / 2, WIDTH)
+                self.assertEqual(y - height / 2, GROUND_Y)
+
+    def test_arrow_clock_uses_elapsed_time_and_does_not_reset_on_transition(self):
+        whole, split = Stage(items=[]), Stage(items=[])
+        whole.update(2.5)
+        for _ in range(25):
+            split.update(0.1)
+        self.assertAlmostEqual(whole.arrow_time, split.arrow_time)
+        self.assertGreaterEqual(whole.arrow_time, 0)
+        self.assertLess(whole.arrow_time, ARROW_SWAY_PERIOD)
+        before = split.arrow_time
+        self.assertTrue(split.try_transition(Player(x=ARROW_X[1]), Controls()))
+        self.assertEqual(split.arrow_time, before)
+
+    def test_sway_phase_does_not_move_the_stage_trigger(self):
+        for phase in (ARROW_SWAY_PERIOD / 4, ARROW_SWAY_PERIOD * 3 / 4):
+            stage = Stage(items=[], arrow_time=phase)
+            player = Player(x=ARROW_X[1] - ARROW_TRIGGER_HALF_WIDTH - 1)
+            self.assertFalse(stage.try_transition(player, Controls()))
+            player.x += 1
+            self.assertTrue(stage.try_transition(player, Controls()))

@@ -1,11 +1,12 @@
 """Rendering helpers; game state remains independent of pico2d."""
 
-from math import ceil
+from math import ceil, sin, tau
 
 from pico2d import draw_rectangle
 
 from settings import (
-    ARROW_WIDTH, ARROW_X, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
+    ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_WIDTH, ARROW_X,
+    CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
     HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
     STAGE_ARROWS, WEAPON_HAND_OFFSETS, WIDTH,
 )
@@ -16,11 +17,13 @@ def draw_background(image):
     image.draw(WIDTH / 2, HEIGHT / 2, ceil(image.w * scale), ceil(image.h * scale))
 
 
-def draw_stage_arrows(images, stage_number):
+def draw_stage_arrows(images, stage_number, elapsed=0.0):
+    offset = ARROW_SWAY_AMPLITUDE * sin(tau * elapsed / ARROW_SWAY_PERIOD)
     for direction in STAGE_ARROWS[stage_number]:
         image = images["arrow_right" if direction > 0 else "arrow_left"]
         height = ARROW_WIDTH * image.h / image.w
-        image.draw(ARROW_X[direction], GROUND_Y + height / 2, ARROW_WIDTH, height)
+        image.draw(ARROW_X[direction] + direction * offset,
+                   GROUND_Y + height / 2, ARROW_WIDTH, height)
 
 
 def draw_character(image, player):

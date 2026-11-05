@@ -5,7 +5,7 @@ from random import Random
 
 from settings import (
     AIR_DROP_HEIGHT, ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
-    ARROW_SPAWN_PADDING, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X,
+    ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X,
     PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_BACKGROUNDS,
     STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
 )
@@ -37,7 +37,7 @@ def spawn_items(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
     rng.shuffle(kinds)
     width = max(ITEM_WIDTHS.values())
     jitter = width / 4
-    arrow_clearance = ARROW_WIDTH / 2 + ARROW_SPAWN_PADDING + width / 2 + jitter
+    arrow_clearance = ARROW_WIDTH / 2 + ARROW_SWAY_AMPLITUDE + ARROW_SPAWN_PADDING + width / 2 + jitter
     # Spaced slots keep items apart and leave the player's starting position clear.
     # Reserve full item width and jitter around every displayed arrow, including inactive exits.
     slots = [x for x in range(width, WIDTH - width + 1, 2 * width)
@@ -81,6 +81,7 @@ class Controls:
 class Stage:
     items: list[Item]
     number: int = 1
+    arrow_time: float = 0.0
     _items_by_stage: dict[int, list[Item]] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self):
@@ -90,7 +91,8 @@ class Stage:
     def background_key(self):
         return STAGE_BACKGROUNDS[self.number]
 
-    def update_items(self, dt):
+    def update(self, dt):
+        self.arrow_time = (self.arrow_time + dt) % ARROW_SWAY_PERIOD
         for index, item in enumerate(self.items):
             self.items[index] = item.update(dt)
 
@@ -115,8 +117,9 @@ class Stage:
         player.state = "IDLE"
         player.animation_time = 0.0
         player.facing = direction
-        controls.held.clear()
         controls.jump_requested = controls.pickup_requested = False
+        # Keep held keys (including F/Space) so movement continues without retriggering taps.
+        player.update(0.0, controls)
         return True
 
 

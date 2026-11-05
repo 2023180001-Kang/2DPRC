@@ -42,13 +42,13 @@ def run(frame_limit=None):
             running = poll_events(controls)
             if not running:
                 break
-            stage.update_items(dt)
+            stage.update(dt)
             player.pick_up(stage.items, controls)
             player.update(dt, controls)
             stage.try_transition(player, controls)
             pico2d.clear_canvas()
             draw_background(images[stage.background_key])
-            draw_stage_arrows(images, stage.number)
+            draw_stage_arrows(images, stage.number, stage.arrow_time)
             draw_items(images, stage.items)
             draw_character(images["character"], player)
             draw_held_weapon(images, player)

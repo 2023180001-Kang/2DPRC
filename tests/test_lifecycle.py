@@ -35,10 +35,12 @@ class LifecycleTests(unittest.TestCase):
         self.poll_events = Mock(return_value=True)
         self.draw_background = Mock()
         self.draw_portal = Mock()
-        self.spawn_items = Mock(return_value=sentinel.items)
+        self.items = []
+        self.spawn_items = Mock(return_value=self.items)
         self.draw_items = Mock()
         self.draw_character = Mock()
         self.draw_held_weapon = Mock()
+        self.draw_falling_items = Mock()
         self.draw_pickup_hint = Mock()
         self.draw_health = Mock()
         patches = [
@@ -62,6 +64,7 @@ class LifecycleTests(unittest.TestCase):
                 draw_health=self.draw_health, spawn_items=self.spawn_items,
                 draw_items=self.draw_items,
                 draw_held_weapon=self.draw_held_weapon,
+                draw_falling_items=self.draw_falling_items,
                 draw_pickup_hint=self.draw_pickup_hint,
                 draw_portal=self.draw_portal,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
@@ -103,6 +106,7 @@ class LifecycleTests(unittest.TestCase):
         drawing.attach_mock(self.draw_items, "items")
         drawing.attach_mock(self.draw_character, "character")
         drawing.attach_mock(self.draw_held_weapon, "weapon")
+        drawing.attach_mock(self.draw_falling_items, "falling_items")
         drawing.attach_mock(self.draw_pickup_hint, "hint")
         drawing.attach_mock(self.draw_health, "health")
         drawing.attach_mock(self.update_canvas, "update")
@@ -126,10 +130,11 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(drawing.mock_calls, [
             call.background(self.retained_images[0]),
             call.portal(self.retained_images[6], 1),
-            call.items(self.images, sentinel.items),
+            call.items(self.images, self.items),
             call.character(self.retained_images[1], player),
             call.weapon(self.images, player),
-            call.hint(self.images, sentinel.items, player),
+            call.falling_items(self.images, self.items),
+            call.hint(self.images, self.items, player),
             call.health(self.retained_images[2], player),
             call.update(),
         ])
@@ -146,7 +151,7 @@ class LifecycleTests(unittest.TestCase):
 
         self.assertEqual(result["frames"], 3)
         self.assertEqual(initialization.mock_calls, [call.player(), call.spawn()])
-        self.assertEqual(self.draw_items.call_args_list, [call(self.images, sentinel.items)] * 3)
+        self.assertEqual(self.draw_items.call_args_list, [call(self.images, self.items)] * 3)
         self.assert_images_released_before_close()
 
     def test_drawing_traceback_retains_image_but_texture_is_released(self):
@@ -279,6 +284,7 @@ class LifecycleTests(unittest.TestCase):
         self.draw_items.assert_not_called()
         self.draw_character.assert_not_called()
         self.draw_held_weapon.assert_not_called()
+        self.draw_falling_items.assert_not_called()
         self.draw_pickup_hint.assert_not_called()
         self.draw_health.assert_not_called()
         self.assert_images_released_before_close()

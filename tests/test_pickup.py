@@ -1,7 +1,7 @@
 import unittest
 
 from game import Controls, Item, Player
-from settings import GROUND_Y, JUMP_DURATION, PICKUP_RADIUS
+from settings import AIR_DROP_HEIGHT, GROUND_Y, JUMP_DURATION, PICKUP_RADIUS
 
 
 class PickupTests(unittest.TestCase):
@@ -214,16 +214,18 @@ class PickupTests(unittest.TestCase):
         self.assertTrue(player.pick_up(items, controls))
         self.assertEqual((player.weapon, items), ("steel_pipe", []))
 
-    def test_airborne_drop_request_is_discarded_before_landing(self):
+    def test_airborne_f_drops_immediately_and_does_not_queue_repickup(self):
         player, controls, items = Player(weapon="dagger"), Controls(), []
         controls.set_key("space", True)
         player.update(JUMP_DURATION / 4, controls)
         controls.set_key("f", True)
-        self.assertFalse(player.pick_up(items, controls))
+        drop_y = player.foot_y + AIR_DROP_HEIGHT
+        self.assertTrue(player.pick_up(items, controls))
         self.assertFalse(controls.pickup_requested)
         player.update(JUMP_DURATION, controls)
         self.assertFalse(player.pick_up(items, controls))
-        self.assertEqual((player.weapon, items), ("dagger", []))
+        self.assertIsNone(player.weapon)
+        self.assertEqual(items, [Item("dagger", player.x, drop_y, falling=True)])
 
     def test_no_request_or_unfocused_f_does_not_drop_held_weapon(self):
         player, controls, items = Player(weapon="dagger"), Controls(focused=False), []

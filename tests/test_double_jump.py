@@ -105,8 +105,7 @@ class DoubleJumpTests(unittest.TestCase):
                     player.update(JUMP_DURATION / 8, controls)
                     self.assertEqual((player.state, player.facing, player.weapon), ("JUMP", -1, "dagger"))
                     items = [Item("steel_pipe", player.x, player.foot_y)]
-                    controls.set_key("f", False)
-                    controls.set_key("f", True)
+                    self.assertIsNone(player.pickup_target(items))
                     self.assertFalse(player.pick_up(items, controls))
                     self.assertFalse(controls.pickup_requested)
                     self.assertEqual(len(items), 1)

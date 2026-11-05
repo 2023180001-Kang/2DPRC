@@ -41,12 +41,22 @@ def draw_health(image, player):
                HEIGHT - HUD_MARGIN - height / 2, HEALTH_BAR_WIDTH, height)
 
 
+def _draw_item(image, item):
+    width = ITEM_WIDTHS[item.kind]
+    height = width * image.h / image.w
+    image.draw(item.x, item.foot_y + height / 2, width, height)
+
+
 def draw_items(images, items):
     for item in items:
-        image = images[item.kind]
-        width = ITEM_WIDTHS[item.kind]
-        height = width * image.h / image.w
-        image.draw(item.x, item.foot_y + height / 2, width, height)
+        if not item.falling:
+            _draw_item(images[item.kind], item)
+
+
+def draw_falling_items(images, items):
+    for item in items:
+        if item.falling:
+            _draw_item(images[item.kind], item)
 
 
 def draw_pickup_hint(images, items, player):

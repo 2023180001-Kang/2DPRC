@@ -1,10 +1,10 @@
 """Pure Python game state, usable in tests without opening a window."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from random import Random
 
 from settings import (
-    ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
+    AIR_DROP_HEIGHT, ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
     PICKUP_RADIUS, PLAYER_HALF_WIDTH, PORTAL_TRIGGER_HALF_WIDTH, PORTAL_X,
     RUN_SPEED, SECOND_STAGE_SPAWN_X, WALK_SPEED, WIDTH,
 )
@@ -15,6 +15,17 @@ class Item:
     kind: str
     x: float
     foot_y: float = GROUND_Y
+    vertical_speed: float = 0.0
+    falling: bool = False
+
+    def update(self, dt):
+        if not self.falling:
+            return self
+        y = self.foot_y + self.vertical_speed * dt - 0.5 * GRAVITY * dt * dt
+        speed = self.vertical_speed - GRAVITY * dt
+        if y <= GROUND_Y + 1e-9:
+            return replace(self, foot_y=GROUND_Y, vertical_speed=0.0, falling=False)
+        return replace(self, foot_y=y, vertical_speed=speed)
 
 
 def spawn_items(rng=None, spawn_x=WIDTH / 2):
@@ -69,6 +80,10 @@ class Stage:
     def background_key(self):
         return "background" if self.number == 1 else "second_background"
 
+    def update_items(self, dt):
+        for index, item in enumerate(self.items):
+            self.items[index] = item.update(dt)
+
     def enter_portal(self, player, controls, rng=None):
         if (self.number != 1 or not player.grounded
                 or abs(player.x - PORTAL_X) > PORTAL_TRIGGER_HALF_WIDTH):
@@ -118,16 +133,16 @@ class Player:
             return None
         distance, index = min(
             (((item.x - self.x) ** 2 + (item.foot_y - self.foot_y) ** 2, index)
-             for index, item in enumerate(items)),
+             for index, item in enumerate(items) if not item.falling),
             default=(float("inf"), None),
         )
         return index if distance <= PICKUP_RADIUS ** 2 else None
 
     def pick_up(self, items, controls):
-        """Handle one F press: pick up/swap a nearby weapon, otherwise drop the held one."""
+        """Pick up/swap on the ground, or drop a held weapon on the ground or in the air."""
         requested = controls.pickup_requested
         controls.pickup_requested = False
-        if not requested or not self.grounded:
+        if not requested:
             return False
         index = self.pickup_target(items)
         previous = self.weapon
@@ -135,7 +150,10 @@ class Player:
             return False
         self.weapon = items.pop(index).kind if index is not None else None
         if previous is not None:
-            items.append(Item(previous, self.x))
+            if self.grounded:
+                items.append(Item(previous, self.x))
+            else:
+                items.append(Item(previous, self.x, self.foot_y + AIR_DROP_HEIGHT, falling=True))
         return True
 
     def update(self, dt, controls):

@@ -30,6 +30,7 @@ MAX_HEALTH = 3
 HEALTH_BAR_WIDTH = 320
 HUD_MARGIN = 16
 ITEM_WIDTHS = {"dagger": 44, "steel_pipe": 64}
+AIR_DROP_HEIGHT = 32.0
 PICKUP_RADIUS = 56.0
 PICKUP_HINT_SIZE = 22  # Layout area keeps the F at its original position without a keycap.
 PICKUP_HINT_GAP = 10

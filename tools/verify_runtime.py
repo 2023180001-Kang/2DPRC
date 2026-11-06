@@ -31,7 +31,8 @@ def push(kind, value=None):
         event.key.windowID = sdl2.SDL_GetWindowID(core.window)
         event.key.keysym.sym = {"left": sdl2.SDLK_LEFT, "right": sdl2.SDLK_RIGHT,
                                "lshift": sdl2.SDLK_LSHIFT, "rshift": sdl2.SDLK_RSHIFT,
-                               "r": sdl2.SDLK_r, "space": sdl2.SDLK_SPACE, "f": sdl2.SDLK_f}[value]
+                               "r": sdl2.SDLK_r, "space": sdl2.SDLK_SPACE, "f": sdl2.SDLK_f,
+                               "z": sdl2.SDLK_z}[value]
     elif kind == "quit":
         event.type = sdl2.SDL_QUIT
     else:

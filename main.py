@@ -27,7 +27,7 @@ def run(frame_limit=None):
         if not core.window or not core.renderer:
             raise RuntimeError(f"Cannot create canvas: {core.SDL_GetError()!r}")
         pico2d.hide_lattice()
-        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap/drop")
+        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap/drop | Z: attack")
         images = load_images()
         player = Player()
         stage = Stage(items=spawn_items())
@@ -50,7 +50,7 @@ def run(frame_limit=None):
             draw_background(images[stage.background_key])
             draw_stage_arrows(images, stage.number, stage.arrow_time)
             draw_items(images, stage.items)
-            draw_character(images["character"], player)
+            draw_character(images[player.character_key], player)
             draw_held_weapon(images, player)
             draw_falling_items(images, stage.items)
             draw_pickup_hint(images, stage.items, player)

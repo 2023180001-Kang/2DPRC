@@ -13,24 +13,24 @@ class MovementTests(unittest.TestCase):
                 self.assertAlmostEqual(player.x, WIDTH / 2 + sign * WALK_SPEED)
 
     def test_running_speed_in_both_directions(self):
-        self.assertGreater(RUN_SPEED, WALK_SPEED)
+        self.assertEqual(RUN_SPEED, 360.0 * 4)
         for key, sign in (("left", -1), ("right", 1)):
             for shifts in ({"lshift"}, {"rshift"}, {"lshift", "rshift"}):
                 with self.subTest(key=key, shifts=shifts):
                     player = Player()
-                    player.update(1, Controls({key} | shifts))
-                    self.assertAlmostEqual(player.x, WIDTH / 2 + sign * RUN_SPEED)
+                    player.update(0.1, Controls({key} | shifts))
+                    self.assertAlmostEqual(player.x, WIDTH / 2 + sign * RUN_SPEED * 0.1)
 
     def test_release_run_changes_distance_immediately(self):
         for shifts in (("lshift",), ("rshift",), ("lshift", "rshift"), ("rshift", "lshift")):
             with self.subTest(shifts=shifts):
                 player, controls = Player(), Controls({"right", *shifts})
-                player.update(0.25, controls)
+                player.update(0.1, controls)
                 for shift in shifts:
                     controls.set_key(shift, False)
-                    player.update(0.25, controls)
+                    player.update(0.1, controls)
                 self.assertAlmostEqual(player.x - WIDTH / 2,
-                                       (len(shifts) * RUN_SPEED + WALK_SPEED) / 4)
+                                       (len(shifts) * RUN_SPEED + WALK_SPEED) / 10)
 
     def test_step_size_independence(self):
         for held in ({"left"}, {"right"}, {"left", "lshift"}, {"right", "lshift"},

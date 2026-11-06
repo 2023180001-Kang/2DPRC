@@ -21,6 +21,7 @@ class LifecycleTests(unittest.TestCase):
             "second_background": Mock(texture=sentinel.second_background_texture),
             "arrow_left": Mock(texture=sentinel.arrow_left_texture),
             "arrow_right": Mock(texture=sentinel.arrow_right_texture),
+            "armed_character": Mock(texture=sentinel.armed_character_texture),
         }
         self.retained_images = tuple(self.images.values())
         self.textures = {image.texture: image for image in self.retained_images}

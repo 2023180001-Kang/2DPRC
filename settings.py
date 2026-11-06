@@ -8,6 +8,11 @@ FRAME_HEIGHT = 256
 FRAME_COUNT = 8
 FRAME_ROWS = 4
 CHARACTER_SOURCE = "MainCharacter_pico2d_2048x1024.png"
+ARMED_CHARACTER_SOURCE = "HoodMan_Weaponless_5States_2048x1280.png"
+ARMED_FRAME_ROWS = 5
+ARMED_ANIMATION_ROWS = {"IDLE": 0, "WALK": 1, "RUN": 2, "ATTACK": 3, "JUMP": 4}
+ATTACK_FPS = 16
+ATTACK_DURATION = FRAME_COUNT / ATTACK_FPS
 FRAME_BOTTOM_PADDING = 12
 CHARACTER_SCALE = 0.6
 PLAYER_HALF_WIDTH = FRAME_WIDTH * CHARACTER_SCALE / 2
@@ -24,7 +29,7 @@ STAGE_ARROWS = {1: (1,), 2: (-1, 1)}
 STAGE_ENTRY_LEFT_X = 128.0
 STAGE_ENTRY_RIGHT_X = WIDTH - STAGE_ENTRY_LEFT_X
 WALK_SPEED = 180.0
-RUN_SPEED = 320.0
+RUN_SPEED = WALK_SPEED * 8
 JUMP_SPEED = 480.0 * sqrt(2.0)
 GRAVITY = 1200.0
 JUMP_DURATION = 2 * JUMP_SPEED / GRAVITY
@@ -42,8 +47,10 @@ PICKUP_HINT_SIZE = 22  # Layout area keeps the F at its original position withou
 PICKUP_HINT_GAP = 10
 # Hand offsets in source pixels from the centered character's feet, before facing flip.
 WEAPON_HAND_OFFSETS = {
-    "IDLE": ((24, 72),) * FRAME_COUNT,
-    "WALK": ((24, 72), (26, 72), (24, 74), (22, 76), (24, 74), (26, 72), (24, 72), (22, 74)),
-    "RUN": ((26, 90), (24, 92), (34, 102), (36, 100), (26, 90), (24, 92), (32, 100), (28, 96)),
-    "JUMP": ((26, 54), (-36, 64), (-40, 76), (-48, 80), (-42, 68), (-40, 68), (24, 76), (24, 76)),
+    "IDLE": ((27, 68), (27, 71), (36, 91), (37, 103), (36, 109), (27, 68), (28, 68), (28, 68)),
+    "WALK": ((-15, 77), (-16, 75), (0, 77), (5, 81), (-4, 77), (-4, 78), (-35, 75), (-28, 78)),
+    "RUN": ((23, 90), (21, 89), (-52, 83), (45, 91), (33, 86), (24, 88), (22, 85), (23, 90)),
+    "ATTACK": ((16, 71), (-11, 79), (48, 103), (68, 126), (74, 108), (35, 93), (9, 76), (15, 70)),
+    "JUMP": ((18, 68), (-48, 73), (-52, 87), (41, 101), (30, 69), (-40, 67), (7, 46), (9, 48)),
 }
+WEAPON_ATTACK_ANGLES = (65, 100, 35, 0, -25, -45, 25, 65)

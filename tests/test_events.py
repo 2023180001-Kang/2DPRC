@@ -45,24 +45,27 @@ class EventTests(unittest.TestCase):
         self.assertNotIn("space", controls.held)
 
     def test_repeated_sdl_keydown_does_not_request_jump(self):
-        for keycode in (sdl2.SDLK_SPACE, sdl2.SDLK_f, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
+        for keycode in (sdl2.SDLK_SPACE, sdl2.SDLK_f, sdl2.SDLK_z, sdl2.SDLK_LSHIFT, sdl2.SDLK_RSHIFT):
             with self.subTest(keycode=keycode):
                 controls = Controls()
                 self.key(repeat=True, keycode=keycode)
                 poll_events(controls)
                 self.assertFalse(controls.jump_requested)
                 self.assertFalse(controls.pickup_requested)
+                self.assertFalse(controls.attack_requested)
                 self.assertFalse(controls.held)
                 self.key(keycode=keycode)
                 poll_events(controls)
                 controls.jump_requested = False
                 controls.pickup_requested = False
+                controls.attack_requested = False
                 for _ in range(3):
                     self.key(repeat=True, keycode=keycode)
                 poll_events(controls)
                 self.assertEqual(controls.held, {KEY_NAMES[keycode]})
                 self.assertFalse(controls.jump_requested)
                 self.assertFalse(controls.pickup_requested)
+                self.assertFalse(controls.attack_requested)
                 self.key(down=False, keycode=keycode)
                 poll_events(controls)
                 self.assertFalse(controls.held)
@@ -152,6 +155,22 @@ class EventTests(unittest.TestCase):
         self.assertTrue(player.pick_up(items, controls))
         self.assertEqual((player.weapon, items), ("dagger", []))
         self.assertFalse(player.pick_up(items, controls))
+
+    def test_z_tap_attacks_and_focus_loss_discards_pending_attack(self):
+        controls, player = Controls(), Player(weapon="dagger")
+        self.key(keycode=sdl2.SDLK_z)
+        self.key(down=False, keycode=sdl2.SDLK_z)
+        poll_events(controls)
+        self.assertTrue(controls.attack_requested)
+        player.update(0, controls)
+        self.assertTrue(player.attacking)
+        self.key(keycode=sdl2.SDLK_z)
+        self.focus(False)
+        poll_events(controls)
+        self.assertFalse(controls.attack_requested)
+        self.assertFalse(controls.held)
+        player.update(0.1, controls)
+        self.assertAlmostEqual(player.attack_time, 0.1)
 
     def test_focus_loss_discards_pickup_and_f_requires_new_press(self):
         controls, player = Controls(), Player()

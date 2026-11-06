@@ -1,36 +1,57 @@
-"""Align the new transparent four-row sheet without modifying the source."""
+"""Align transparent character sheets without modifying the sources."""
 
 import argparse
+from itertools import groupby
 from pathlib import Path
 
 from PIL import Image
 
 from settings import (
-    CHARACTER_SOURCE, FRAME_BOTTOM_PADDING, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
+    ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE,
+    FRAME_BOTTOM_PADDING, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png", preview=False):
+def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png", preview=False,
+            rows=FRAME_ROWS):
     with Image.open(source) as original:
         sheet = original.convert("RGBA")
-    if sheet.size != (FRAME_COUNT * FRAME_WIDTH, FRAME_ROWS * FRAME_HEIGHT):
-        raise ValueError("Sprite sheet must contain 8 by 4 cells of 256 by 256 pixels")
+    if sheet.size != (FRAME_COUNT * FRAME_WIDTH, rows * FRAME_HEIGHT):
+        raise ValueError(f"Sprite sheet must contain 8 by {rows} cells of 256 by 256 pixels")
     if sheet.getchannel("A").getextrema()[0] != 0:
         raise ValueError("The new sprite sheet must have a transparent background")
     width, height = FRAME_WIDTH, FRAME_HEIGHT
-    for row in range(FRAME_ROWS):
+    source_sheet = sheet.copy()
+    bands = {}
+    if rows == ARMED_FRAME_ROWS:
+        # Some jump hoods cross the nominal row boundary in the supplied art.
+        # Separate the five silhouettes by transparent horizontal gaps instead
+        # of cutting those heads (or including them in the attack frame).
+        for column in range(FRAME_COUNT):
+            alpha = source_sheet.crop((column * width, 0, (column + 1) * width, sheet.height)).getchannel("A")
+            alpha = alpha.point(lambda value: 255 if value >= 128 else 0)
+            occupied = [y for y in range(sheet.height) if alpha.crop((0, y, width, y + 1)).getbbox()]
+            spans = [list(group) for _, group in groupby(enumerate(occupied), lambda pair: pair[1] - pair[0])]
+            if len(spans) != rows:
+                raise ValueError(f"Expected {rows} separated silhouettes in column {column}")
+            bands[column] = [(span[0][1], span[-1][1] + 1) for span in spans]
+    for row in range(rows):
         for column in range(FRAME_COUNT):
             box = (column * width, row * height, (column + 1) * width, (row + 1) * height)
-            frame = sheet.crop(box)
+            if bands:
+                top, bottom = bands[column][row]
+                frame = source_sheet.crop((column * width, top, (column + 1) * width, bottom))
+            else:
+                frame = source_sheet.crop(box)
             # Almost invisible matte remnants must not determine the frame anchor.
             frame.putalpha(frame.getchannel("A").point(lambda alpha: alpha if alpha >= 128 else 0))
             bounds = frame.getbbox()
             if bounds is None:
                 raise ValueError(f"No character remained at row {row}, column {column}")
             sprite = frame.crop(bounds)
-            aligned = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+            aligned = Image.new("RGBA", (width, height), (0, 0, 0, 0))
             aligned.paste(sprite, (
                 (width - sprite.width) // 2,
                 height - FRAME_BOTTOM_PADDING - sprite.height,
@@ -41,7 +62,7 @@ def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png"
     sheet.save(output)
     print(f"Prepared {output}: {sheet.width}x{sheet.height}, cells {width}x{height}")
     if preview:
-        preview_path = ROOT / "artifacts/character-preview.png"
+        preview_path = ROOT / f"artifacts/{output.stem}-preview.png"
         preview_path.parent.mkdir(parents=True, exist_ok=True)
         canvas = Image.new("RGBA", sheet.size, (52, 95, 125, 255))
         canvas.alpha_composite(sheet)
@@ -51,4 +72,10 @@ def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png"
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preview", action="store_true")
-    prepare(preview=parser.parse_args().preview)
+    parser.add_argument("--armed", action="store_true", help="Prepare the five-state weaponless sheet")
+    args = parser.parse_args()
+    if args.armed:
+        prepare(ROOT / ARMED_CHARACTER_SOURCE, ROOT / "assets/armed_character.png",
+                preview=args.preview, rows=ARMED_FRAME_ROWS)
+    else:
+        prepare(preview=args.preview)

@@ -4,7 +4,8 @@ from dataclasses import dataclass, field, replace
 from random import Random
 
 from settings import (
-    AIR_DROP_HEIGHT, ANIMATIONS, FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
+    AIR_DROP_HEIGHT, ANIMATIONS, ARMED_ANIMATION_ROWS, ATTACK_DURATION, ATTACK_FPS,
+    FRAME_COUNT, GRAVITY, GROUND_Y, ITEM_WIDTHS, JUMP_SPEED, MAX_HEALTH, MAX_JUMPS,
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X,
     PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_BACKGROUNDS,
     STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
@@ -55,15 +56,18 @@ class Controls:
     focused: bool = True
     jump_requested: bool = False
     pickup_requested: bool = False
+    attack_requested: bool = False
 
     def set_key(self, key, down):
-        if key not in {"left", "right", "lshift", "rshift", "space", "f"}:
+        if key not in {"left", "right", "lshift", "rshift", "space", "f", "z"}:
             return
         if down and self.focused:
             if key == "space" and key not in self.held:
                 self.jump_requested = True
             if key == "f" and key not in self.held:
                 self.pickup_requested = True
+            if key == "z" and key not in self.held:
+                self.attack_requested = True
             self.held.add(key)
         else:
             self.held.discard(key)
@@ -109,7 +113,7 @@ class Stage:
         self.number = destination
         self.items = self._items_by_stage[destination]
         player.x = entry_x
-        controls.jump_requested = controls.pickup_requested = False
+        controls.jump_requested = controls.pickup_requested = controls.attack_requested = False
         # Airborne transitions move only x; preserve the entire ongoing jump.
         if player.grounded:
             player.foot_y = GROUND_Y
@@ -133,6 +137,7 @@ class Player:
     health: int = MAX_HEALTH
     weapon: str | None = None
     jump_count: int = 0
+    attack_time: float | None = None
 
     @property
     def grounded(self):
@@ -140,12 +145,28 @@ class Player:
 
     @property
     def frame(self):
+        if self.attacking:
+            return min(int(self.attack_time * ATTACK_FPS + 1e-9), FRAME_COUNT - 1)
         frame = int(self.animation_time * ANIMATIONS[self.state][1] + 1e-9)
         return min(frame, FRAME_COUNT - 1) if self.state == "JUMP" else frame % FRAME_COUNT
 
     @property
     def row(self):
+        if self.weapon is not None:
+            return ARMED_ANIMATION_ROWS[self.display_state]
         return ANIMATIONS[self.state][0]
+
+    @property
+    def attacking(self):
+        return self.weapon is not None and self.attack_time is not None
+
+    @property
+    def display_state(self):
+        return "ATTACK" if self.attacking else self.state
+
+    @property
+    def character_key(self):
+        return "armed_character" if self.weapon is not None else "character"
 
     def pickup_target(self, items):
         """Share the ground/range/nearest-item rule with the interaction hint."""
@@ -169,6 +190,7 @@ class Player:
         if index is None and previous is None:
             return False
         self.weapon = items.pop(index).kind if index is not None else None
+        self.attack_time = None
         if previous is not None:
             if self.grounded:
                 items.append(Item(previous, self.x))
@@ -177,6 +199,17 @@ class Player:
         return True
 
     def update(self, dt, controls):
+        if self.weapon is None:
+            self.attack_time = None
+        if self.attack_time is not None:
+            self.attack_time += dt
+            if self.attack_time >= ATTACK_DURATION - 1e-9:
+                self.attack_time = None
+            # Requests made during an attack cannot queue or restart it.
+        elif controls.attack_requested and self.weapon is not None:
+            self.attack_time = 0.0
+        controls.attack_requested = False
+
         if controls.jump_requested and (self.grounded or 0 < self.jump_count < MAX_JUMPS):
             self.jump_count = 1 if self.grounded else self.jump_count + 1
             self.vertical_speed = JUMP_SPEED

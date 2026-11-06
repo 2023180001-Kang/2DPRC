@@ -32,7 +32,8 @@ class HeldWeaponTests(unittest.TestCase):
                             image.composite_draw.assert_called_once()
                             angle, flip, x, y, w, h = image.composite_draw.call_args.args
                             hand_x, hand_y = WEAPON_HAND_OFFSETS[state][frame]
-                            self.assertEqual((angle, flip), (0, "h" if facing < 0 else ""))
+                            expected_flip = (facing < 0) != (kind == "steel_pipe")
+                            self.assertEqual((angle, flip), (0, "h" if expected_flip else ""))
                             self.assertAlmostEqual(x, player.x + facing *
                                                    (hand_x * CHARACTER_SCALE + width * 0.3))
                             self.assertAlmostEqual(y, player.foot_y + hand_y * CHARACTER_SCALE)

@@ -1,6 +1,6 @@
 """Rendering helpers; game state remains independent of pico2d."""
 
-from math import ceil, sin, tau
+from math import ceil, cos, radians, sin, tau
 
 from pico2d import draw_rectangle
 
@@ -8,7 +8,7 @@ from settings import (
     ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_WIDTH, ARROW_X,
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
     HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
-    STAGE_ARROWS, WEAPON_HAND_OFFSETS, WIDTH,
+    STAGE_ARROWS, WEAPON_ATTACK_ANGLES, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
@@ -85,8 +85,13 @@ def draw_held_weapon(images, player):
     image = images[player.weapon]
     width = ITEM_WIDTHS[player.weapon]
     height = width * image.h / image.w
-    hand_x, hand_y = WEAPON_HAND_OFFSETS[player.state][player.frame]
-    # Place the grip at 20% of the source width on the hand, mirrored with the body.
-    x = player.x + player.facing * (hand_x * CHARACTER_SCALE + width * 0.3)
-    y = player.foot_y + hand_y * CHARACTER_SCALE
-    image.composite_draw(0, "h" if player.facing < 0 else "", x, y, width, height)
+    hand_x, hand_y = WEAPON_HAND_OFFSETS[player.display_state][player.frame]
+    angle = radians(WEAPON_ATTACK_ANGLES[player.frame] if player.attacking else 0)
+    # Rotate about the hand's grip, rather than the image center. The pipe's
+    # handle is on its right in the source, opposite to the dagger's handle.
+    x = player.x + player.facing * (hand_x * CHARACTER_SCALE + cos(angle) * width * 0.3)
+    y = player.foot_y + hand_y * CHARACTER_SCALE + sin(angle) * width * 0.3
+    half_extent = (abs(cos(angle)) * width + abs(sin(angle)) * height) / 2
+    x = max(half_extent, min(WIDTH - half_extent, x))
+    flip = (player.facing < 0) != (player.weapon == "steel_pipe")
+    image.composite_draw(angle * player.facing, "h" if flip else "", x, y, width, height)

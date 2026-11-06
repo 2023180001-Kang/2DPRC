@@ -6,11 +6,45 @@ import unittest
 from PIL import Image
 
 from resources import ROOT
-from settings import CHARACTER_SOURCE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH
+from settings import (
+    ARMED_ANIMATION_ROWS, ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE,
+    FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH, WEAPON_HAND_OFFSETS,
+)
 from tools.prepare_character import prepare
 
 
 class AssetTests(unittest.TestCase):
+    def test_weapon_grips_are_on_visible_hands_in_every_new_pose(self):
+        with Image.open(ROOT / "assets/armed_character.png") as sheet:
+            for state, row in ARMED_ANIMATION_ROWS.items():
+                for frame, (hand_x, hand_y) in enumerate(WEAPON_HAND_OFFSETS[state]):
+                    with self.subTest(state=state, frame=frame):
+                        r, g, b, a = sheet.getpixel((frame * 256 + 128 + hand_x,
+                                                    row * 256 + 244 - hand_y))
+                        self.assertGreaterEqual(a, 128)
+                        self.assertGreater(r, g + 12)
+                        self.assertGreater(g, b + 8)
+
+    def test_armed_sheet_preserves_every_visible_pixel_including_cross_row_heads(self):
+        source = ROOT / ARMED_CHARACTER_SOURCE
+        original_hash = hashlib.sha256(source.read_bytes()).digest()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "armed_character.png"
+            prepare(source, output, rows=ARMED_FRAME_ROWS)
+            self.assertEqual(output.read_bytes(), (ROOT / "assets/armed_character.png").read_bytes())
+            with Image.open(source) as original, Image.open(output) as aligned:
+                self.assertEqual(aligned.size, (2048, 1280))
+                visible = original.getchannel("A").point(lambda value: value if value >= 128 else 0)
+                self.assertEqual(visible.histogram(), aligned.getchannel("A").histogram())
+                for row in range(5):
+                    for column in range(8):
+                        frame = aligned.crop((column * 256, row * 256, (column + 1) * 256, (row + 1) * 256))
+                        left, top, right, bottom = frame.getbbox()
+                        self.assertGreater(top, 0)
+                        self.assertEqual(bottom, 256 - FRAME_BOTTOM_PADDING)
+                        self.assertLessEqual(abs((left + right) / 2 - 128), 0.5)
+        self.assertEqual(hashlib.sha256(source.read_bytes()).digest(), original_hash)
+
     def test_all_frames_have_stable_visible_bounds(self):
         with Image.open(ROOT / "assets/character.png") as sheet:
             self.assertEqual(sheet.size, (2048, 1024))

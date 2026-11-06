@@ -12,6 +12,7 @@ IMAGE_FILES = {
     "dagger": "dagger_item_pico2d.png", "steel_pipe": "steel_pipe_item_pico2d.png",
     "second_background": "firstSecondmap.png",
     "arrow_left": "arrow_left_yellow.png", "arrow_right": "arrow_right_yellow.png",
+    "armed_character": "assets/armed_character.png",
 }
 
 

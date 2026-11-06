@@ -366,28 +366,26 @@ class Player:
 
     def _prepare_support(self, obstacle):
         left, _, right, top = obstacle.collision_bounds
-        on_top = (obstacle.defeated and left - PLAYER_BODY_HALF_WIDTH < self.x < right + PLAYER_BODY_HALF_WIDTH
+        on_top = (left - PLAYER_BODY_HALF_WIDTH < self.x < right + PLAYER_BODY_HALF_WIDTH
                   and abs(self.foot_y - top) <= 1e-7 and self.vertical_speed == 0)
         was_supported = self.grounded and self.support_y > GROUND_Y
         self.support_y = top if on_top else GROUND_Y
         if was_supported and not on_top and self.foot_y > GROUND_Y:
             self.jump_count = max(1, self.jump_count)
 
-    def _resolve_enemy_collision(self, obstacle, old_x, old_y):
+    def _resolve_enemy_collision(self, obstacle, old_x, old_y, direction):
         left, bottom, right, top = obstacle.collision_bounds
         left -= PLAYER_BODY_HALF_WIDTH
         right += PLAYER_BODY_HALF_WIDTH
         overlaps = left + 1e-8 < self.x < right - 1e-8
-        landed = (obstacle.defeated and overlaps and self.vertical_speed <= 0
+        landed = (overlaps and self.vertical_speed <= 0
                   and old_y >= top - 1e-8 and self.foot_y <= top + 1e-8)
         if landed:
             self.foot_y, self.vertical_speed, self.jump_count = top, 0.0, 0
             self.support_y = top
-        # Living/falling enemies cannot be bypassed by jumping. A completed
-        # corpse is a low solid: only trajectories below its top hit its sides.
-        blocks_side = (not obstacle.defeated or
-                       (min(old_y, self.foot_y) < top - 1e-8
-                        and max(old_y, self.foot_y) + PLAYER_BODY_HEIGHT > bottom + 1e-8))
+        # Every body has finite height: sufficiently high jumps pass above it.
+        blocks_side = (min(old_y, self.foot_y) < top - 1e-8
+                       and max(old_y, self.foot_y) + PLAYER_BODY_HEIGHT > bottom + 1e-8)
         blocked = False
         if blocks_side:
             if old_x <= left + 1e-8 and self.x > left:
@@ -397,16 +395,20 @@ class Player:
             elif left < self.x < right:
                 self.x = left if old_x < obstacle.x or (old_x == obstacle.x and self.facing > 0) else right
                 blocked = True
+            elif abs(self.x - left) <= 1e-8 and direction > 0:
+                blocked = True
+            elif abs(self.x - right) <= 1e-8 and direction < 0:
+                blocked = True
         if blocked:
             self.horizontal_speed = self.boundary_speed = 0.0
         if self.support_y > GROUND_Y and not (
-                obstacle.defeated and left < self.x < right and abs(self.foot_y - top) <= 1e-7
+                left < self.x < right and abs(self.foot_y - top) <= 1e-7
                 and self.vertical_speed == 0):
             was_grounded = self.grounded
             self.support_y = GROUND_Y
             if was_grounded:
                 self.jump_count = max(1, self.jump_count)
-        return landed
+        return landed, blocked
 
     def update(self, dt, controls, obstacle=None):
         attack_started = False
@@ -429,12 +431,20 @@ class Player:
             for _ in range(steps):
                 self._prepare_support(obstacle)
                 old_x, old_y = self.x, self.foot_y
+                old_state, old_animation_time = self.state, self.animation_time
                 self._update_motion(step, controls)
                 if abs(self.boundary_speed) > abs(boundary_speed):
                     boundary_speed = self.boundary_speed
-                landed = self._resolve_enemy_collision(obstacle, old_x, old_y)
+                direction = controls.direction if controls.focused else 0
+                landed, body_blocked = self._resolve_enemy_collision(obstacle, old_x, old_y, direction)
                 if landed or (self.state != "JUMP" and not self.grounded):
                     self._update_motion(0, controls)
+                if body_blocked and self.grounded:
+                    # Input still supplies acceleration into the contact each
+                    # substep, but a stationary body displays a continuous idle.
+                    self.state = "IDLE"
+                    duration = FRAME_COUNT / ANIMATIONS["IDLE"][1]
+                    self.animation_time = (old_animation_time + step) % duration if old_state == "IDLE" else 0.0
             if self.x in (PLAYER_HALF_WIDTH, WIDTH - PLAYER_HALF_WIDTH):
                 self.boundary_speed = boundary_speed
         return attack_started

@@ -4,7 +4,7 @@ import unittest
 from game import Controls, Enemy, Player, Stage
 from settings import (
     ARROW_X, CORPSE_HALF_WIDTH, CORPSE_HEIGHT, ENEMY_BODY_HALF_WIDTH, GROUND_Y,
-    JUMP_SPEED, PLAYER_BODY_HALF_WIDTH, RUN_SPEED, STAGE_ENTRY_LEFT_X,
+    ATTACK_DURATION, JUMP_SPEED, PLAYER_BODY_HALF_WIDTH, RUN_SPEED, STAGE_ENTRY_LEFT_X, WALK_SPEED,
 )
 
 
@@ -18,16 +18,94 @@ class BodyCollisionTests(unittest.TestCase):
                 player.update(0.5, controls, enemy)
                 self.assertEqual(player.x, 640 + side * (ENEMY_BODY_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH))
                 self.assertEqual(player.horizontal_speed, 0)
+                self.assertEqual(player.display_state, "IDLE")
             self.assertEqual((enemy.x, enemy.state, player.health), (640, "IDLE", 3))
 
-    def test_live_and_dying_enemies_cannot_be_bypassed_by_a_high_jump(self):
+    def test_live_and_dying_enemies_can_be_cleared_above_their_actual_height(self):
         for state in ("IDLE", "DYING"):
             enemy = Enemy(x=640, state=state, animation_time=0.5)
             player = Player(x=440, foot_y=GROUND_Y + 350, vertical_speed=100,
                             state="JUMP", jump_count=2, horizontal_speed=RUN_SPEED)
             player.update(0.4, Controls({"right", "rshift"}), enemy)
+            self.assertGreater(player.x, enemy.collision_bounds[2] + PLAYER_BODY_HALF_WIDTH)
+            self.assertEqual(player.horizontal_speed, RUN_SPEED)
+
+    def test_low_airborne_motion_still_hits_the_body_and_keeps_jump_animation(self):
+        for state in ("IDLE", "DYING"):
+            enemy = Enemy(x=640, state=state, animation_time=0.5)
+            player = Player(x=570, foot_y=GROUND_Y + 30, state="JUMP", jump_count=1,
+                            horizontal_speed=RUN_SPEED)
+            player.update(0.1, Controls({"right", "rshift"}), enemy)
             self.assertAlmostEqual(player.x, enemy.collision_bounds[0] - PLAYER_BODY_HALF_WIDTH)
-            self.assertEqual(player.horizontal_speed, 0)
+            self.assertEqual((player.horizontal_speed, player.display_state), (0, "JUMP"))
+
+    def test_double_jump_crosses_a_live_enemy_in_both_directions_at_different_frame_rates(self):
+        for side, key in ((-1, "right"), (1, "left")):
+            for fps in (30, 60, 144):
+                enemy = Enemy(x=640)
+                player = Player(x=640 + side * (ENEMY_BODY_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH))
+                controls = Controls({key, "lshift"})
+                controls.set_key("space", True)
+                used_second = False
+                for tick in range(2 * fps):
+                    if tick in (1, fps // 3 + 1):
+                        controls.set_key("space", False)
+                    if tick == fps // 3:
+                        controls.set_key("space", True)
+                    player.update(1 / fps, controls, enemy)
+                    used_second |= player.jump_count == 2
+                    if abs(player.x - enemy.x) < ENEMY_BODY_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH - 1e-7:
+                        self.assertGreaterEqual(player.foot_y, enemy.collision_bounds[3] - 1e-7)
+                self.assertTrue(used_second)
+                self.assertGreater(-side * (player.x - enemy.x), ENEMY_BODY_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH)
+                self.assertEqual(enemy.state, "IDLE")
+                self.assertEqual(Stage([], enemy=enemy).visible_arrows, ())
+
+    def test_ground_contact_plays_continuous_idle_even_with_walk_or_run_input(self):
+        for side, key in ((-1, "right"), (1, "left")):
+            for running in (False, True):
+                enemy = Enemy(x=640)
+                player = Player(x=640 + side * 56, state="RUN" if running else "WALK",
+                                horizontal_speed=-side * (RUN_SPEED if running else WALK_SPEED))
+                controls = Controls({key} | ({"lshift"} if running else set()))
+                player.update(0.2, controls, enemy)
+                self.assertEqual((player.state, player.horizontal_speed), ("IDLE", 0))
+                phase = player.animation_time
+                player.update(0.2, controls, enemy)
+                self.assertEqual(player.display_state, "IDLE")
+                self.assertGreater(player.animation_time, phase)
+                self.assertGreater(player.frame, 0)
+
+    def test_attack_overrides_contact_idle_and_returns_to_idle_on_completion(self):
+        enemy, player = Enemy(x=640), Player(x=584)
+        controls = Controls({"right", "lshift"})
+        player.update(0.1, controls, enemy)
+        self.assertEqual(player.display_state, "IDLE")
+        controls.set_key("a", True)
+        self.assertTrue(player.update(0.1, controls, enemy))
+        self.assertEqual((player.state, player.display_state), ("IDLE", "ATTACK"))
+        player.update(ATTACK_DURATION, controls, enemy)
+        self.assertEqual((player.state, player.display_state, player.horizontal_speed), ("IDLE", "IDLE", 0))
+
+    def test_jump_or_move_away_resumes_motion_instead_of_sticking_in_idle(self):
+        enemy = Enemy(x=640)
+        player = Player(x=584)
+        player.update(0, Controls({"right", "lshift"}), enemy)
+        self.assertEqual(player.state, "IDLE")
+        player.update(0.1, Controls({"left", "lshift"}), enemy)
+        self.assertLess(player.x, 584)
+        self.assertEqual(player.state, "RUN")
+        player.update(0, Controls({"right"}, jump_requested=True), enemy)
+        self.assertEqual(player.state, "JUMP")
+
+    def test_descending_player_can_land_on_live_enemy_then_jump_again(self):
+        enemy = Enemy(x=640)
+        player = Player(x=640, foot_y=GROUND_Y + 300, vertical_speed=-500, state="JUMP", jump_count=2)
+        player.update(0.6, Controls(), enemy)
+        self.assertEqual((player.foot_y, player.support_y, player.jump_count), (276, 276, 0))
+        self.assertTrue(player.grounded)
+        player.update(0, Controls(jump_requested=True), enemy)
+        self.assertEqual((player.vertical_speed, player.jump_count, player.display_state), (JUMP_SPEED, 1, "JUMP"))
 
     def test_contact_attack_still_hits_once_with_unarmed_dagger_and_pipe(self):
         for weapon in (None, "dagger", "steel_pipe"):
@@ -62,6 +140,7 @@ class BodyCollisionTests(unittest.TestCase):
                 player.update(0.5, Controls({key, "lshift"}), corpse)
                 self.assertEqual(player.x, 640 + side * (CORPSE_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH))
                 self.assertEqual((player.foot_y, player.horizontal_speed), (GROUND_Y, 0))
+                self.assertEqual(player.display_state, "IDLE")
 
     def test_sliding_momentum_cannot_push_through_a_corpse(self):
         corpse = Enemy(x=640, state="DEAD")
@@ -90,7 +169,7 @@ class BodyCollisionTests(unittest.TestCase):
         self.assertGreater(player.x, 734)
         self.assertEqual((player.foot_y, player.support_y), (GROUND_Y, GROUND_Y))
 
-    def test_high_airborne_motion_can_cross_only_the_corpse(self):
+    def test_high_airborne_motion_can_cross_the_corpse(self):
         corpse = Enemy(x=640, state="DEAD")
         player = Player(x=400, foot_y=GROUND_Y + 200, horizontal_speed=RUN_SPEED, state="JUMP", jump_count=1)
         player.update(0.5, Controls({"right", "lshift"}), corpse)

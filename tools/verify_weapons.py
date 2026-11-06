@@ -56,19 +56,21 @@ def verify_gameplay(output):
     items = [Item("dagger", player.x), Item("steel_pipe", 900), Item("dagger", 250)]
     actions = {
         0: [("focus", True), ("down", "f"), ("up", "f")],
-        1: [("down", "z")],
-        10: [("up", "z"), ("down", "z")],
-        42: [("up", "z")],
-        45: [("down", "left"), ("down", "z"), ("up", "z")],
+        1: [("down", "a")],
+        2: [("down", "z"), ("up", "z")],
+        10: [("up", "a"), ("down", "a")],
+        42: [("up", "a")],
+        45: [("down", "left"), ("down", "a"), ("up", "a")],
         60: [("up", "left")],
         65: [("down", "f"), ("up", "f")],
-        70: [("down", "z"), ("up", "z")],
+        70: [("down", "a"), ("up", "a")],
         105: [("down", "f"), ("up", "f")],
+        107: [("down", "a"), ("up", "a")],
         110: [("down", "f"), ("up", "f")],
-        115: [("down", "z"), ("up", "z"), ("down", "space"), ("up", "space")],
+        115: [("down", "a"), ("up", "a"), ("down", "space"), ("up", "space")],
         125: [("down", "space"), ("up", "space")],
         130: [("down", "f"), ("up", "f")],
-        140: [("down", "z"), ("focus", False)],
+        140: [("down", "a"), ("focus", False)],
         141: [("focus", True)],
         220: [("down", "f"), ("up", "f")],
         225: [("down", "right"), ("down", "lshift")],
@@ -79,7 +81,8 @@ def verify_gameplay(output):
     checkpoints = {
         0: ("dagger", "IDLE"), 8: ("dagger", "ATTACK"), 40: ("dagger", "IDLE"),
         50: ("dagger", "ATTACK"), 65: ("steel_pipe", "IDLE"), 78: ("steel_pipe", "ATTACK"),
-        105: (None, "IDLE"), 115: ("steel_pipe", "ATTACK"), 128: ("steel_pipe", "ATTACK"),
+        105: (None, "IDLE"), 107: (None, "ATTACK"),
+        115: ("steel_pipe", "ATTACK"), 128: ("steel_pipe", "ATTACK"),
         130: (None, "JUMP"), 140: (None, "JUMP"), 220: ("steel_pipe", "IDLE"),
     }
     tick, clock = -1, 0.0
@@ -98,13 +101,15 @@ def verify_gameplay(output):
         for kind, value in actions.get(tick, []):
             push(kind, value)
         result = poll_events(controls)
+        if tick == 2:
+            assert "a" in controls.held and "z" not in controls.held
         if tick == 140:
             assert not controls.attack_requested and not controls.held
         return result
 
     def observe(image, current):
         draw_character(image, current)
-        assert image.h == (1280 if current.weapon else 1024)
+        assert image.h == (1280 if current.character_key == "armed_character" else 1024)
         if tick in checkpoints:
             assert (current.weapon, current.display_state) == checkpoints[tick], (tick, vars(current))
         if tick == 128:

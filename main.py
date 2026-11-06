@@ -12,7 +12,7 @@ from game import Controls, Player, Stage, spawn_items
 from resources import ResourceError, load_images, release_images
 from rendering import (
     draw_background, draw_character, draw_falling_items, draw_health, draw_held_weapon, draw_items, draw_pickup_hint,
-    draw_stage_arrows,
+    draw_enemy, draw_stage_arrows,
 )
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
@@ -44,12 +44,14 @@ def run(frame_limit=None):
                 break
             stage.update(dt)
             player.pick_up(stage.items, controls)
-            player.update(dt, controls)
+            if player.update(dt, controls):
+                stage.hit_enemy(player)
             stage.try_transition(player, controls)
             pico2d.clear_canvas()
             draw_background(images[stage.background_key])
-            draw_stage_arrows(images, stage.number, stage.arrow_time)
+            draw_stage_arrows(images, stage.number, stage.arrow_time, directions=stage.visible_arrows)
             draw_items(images, stage.items)
+            draw_enemy(images["enemy"], stage.enemy)
             draw_character(images[player.character_key], player)
             draw_held_weapon(images, player)
             draw_falling_items(images, stage.items)

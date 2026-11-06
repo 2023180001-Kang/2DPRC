@@ -2,7 +2,7 @@ from random import Random
 import unittest
 from unittest.mock import patch
 
-from game import Controls, Item, Player, Stage
+from game import Controls, Enemy, Item, Player, Stage
 from settings import (
     ARROW_X, GRAVITY, GROUND_Y, JUMP_DURATION, JUMP_SPEED,
     STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X,
@@ -10,6 +10,11 @@ from settings import (
 
 
 class AirStageTransitionTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_jump_after_transition_matches_uninterrupted_trajectory_and_landing(self):
         for number, direction, key in ((1, 1, "right"), (2, -1, "left")):
             for speed in (-200, 0, 200):

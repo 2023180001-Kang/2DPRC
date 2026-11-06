@@ -1,8 +1,8 @@
 import math
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from game import Controls, Item, Player, Stage
+from game import Controls, Enemy, Item, Player, Stage
 from rendering import draw_character, draw_held_weapon
 from settings import (
     ANIMATIONS, ARMED_ANIMATION_ROWS, ARROW_X, ATTACK_DURATION, ATTACK_FPS,
@@ -12,6 +12,11 @@ from settings import (
 
 
 class AttackTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def tap(self, controls, key="a"):
         controls.set_key(key, False)
         controls.set_key(key, True)

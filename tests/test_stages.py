@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from PIL import Image
 
-from game import Controls, Item, Player, Stage
+from game import Controls, Enemy, Item, Player, Stage
 from rendering import draw_background, draw_stage_arrows
 from resources import IMAGE_FILES, ROOT
 from settings import (
@@ -15,6 +15,12 @@ from settings import (
 
 
 class StageTests(unittest.TestCase):
+    def setUp(self):
+        # Exercise travel after clearing the encounter; gates have their own tests.
+        patcher = patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_starts_on_first_background_and_only_activates_inside_right_arrow(self):
         for offset, enters in ((-31, False), (-30, True), (0, True), (30, True), (31, False)):
             with self.subTest(offset=offset):

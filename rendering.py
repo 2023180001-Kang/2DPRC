@@ -9,6 +9,7 @@ from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
     HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
     STAGE_ARROWS, WEAPON_ATTACK_ANGLES, WEAPON_CARRY_ANGLE, WEAPON_GRIPS, WEAPON_HAND_OFFSETS, WIDTH,
+    ENEMY_SCALE,
 )
 
 
@@ -17,9 +18,9 @@ def draw_background(image):
     image.draw(WIDTH / 2, HEIGHT / 2, ceil(image.w * scale), ceil(image.h * scale))
 
 
-def draw_stage_arrows(images, stage_number, elapsed=0.0):
+def draw_stage_arrows(images, stage_number, elapsed=0.0, *, directions=None):
     offset = ARROW_SWAY_AMPLITUDE * sin(tau * elapsed / ARROW_SWAY_PERIOD)
-    for direction in STAGE_ARROWS[stage_number]:
+    for direction in STAGE_ARROWS[stage_number] if directions is None else directions:
         image = images["arrow_right" if direction > 0 else "arrow_left"]
         height = ARROW_WIDTH * image.h / image.w
         image.draw(ARROW_X[direction] + direction * offset,
@@ -34,6 +35,15 @@ def draw_character(image, player):
         player.frame * FRAME_WIDTH, image.h - (player.row + 1) * FRAME_HEIGHT,
         FRAME_WIDTH, FRAME_HEIGHT,
         0, "h" if player.facing < 0 else "", player.x, center_y, width, height,
+    )
+
+
+def draw_enemy(image, enemy):
+    width, height = FRAME_WIDTH * ENEMY_SCALE, FRAME_HEIGHT * ENEMY_SCALE
+    image.clip_composite_draw(
+        enemy.frame * FRAME_WIDTH, image.h - (enemy.row + 1) * FRAME_HEIGHT,
+        FRAME_WIDTH, FRAME_HEIGHT, 0, "h" if enemy.facing < 0 else "",
+        enemy.x, enemy.foot_y + height / 2 - FRAME_BOTTOM_PADDING * ENEMY_SCALE, width, height,
     )
 
 

@@ -9,6 +9,7 @@ from settings import (
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_TRIGGER_HALF_WIDTH, ARROW_WIDTH, ARROW_X,
     PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_BACKGROUNDS,
     STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
+    ATTACK_HEIGHT_RANGE, ATTACK_RANGE, ENEMY_DEATH_DURATION, ENEMY_DEATH_FPS, ENEMY_IDLE_FPS,
 )
 
 
@@ -82,26 +83,97 @@ class Controls:
 
 
 @dataclass
+class Enemy:
+    x: float = WIDTH / 2
+    foot_y: float = GROUND_Y
+    facing: int = -1
+    state: str = "IDLE"
+    animation_time: float = 0.0
+
+    @property
+    def defeated(self):
+        return self.state == "DEAD"
+
+    @property
+    def row(self):
+        return 0 if self.state == "IDLE" else 3
+
+    @property
+    def frame(self):
+        if self.defeated:
+            return FRAME_COUNT - 1
+        if self.state == "IDLE":
+            return int(self.animation_time * ENEMY_IDLE_FPS + 1e-9) % FRAME_COUNT
+        return min(int(self.animation_time * ENEMY_DEATH_FPS + 1e-9), FRAME_COUNT - 1)
+
+    def hit(self):
+        if self.state != "IDLE":
+            return False
+        self.state, self.animation_time = "DYING", 0.0
+        return True
+
+    def update(self, dt):
+        if self.state == "IDLE":
+            self.animation_time = (self.animation_time + dt) % (FRAME_COUNT / ENEMY_IDLE_FPS)
+        elif self.state == "DYING":
+            self.animation_time = min(self.animation_time + dt, ENEMY_DEATH_DURATION)
+            if self.animation_time >= ENEMY_DEATH_DURATION - 1e-9:
+                self.animation_time = ENEMY_DEATH_DURATION
+                self.state = "DEAD"
+
+
+def spawn_enemy(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
+    rng = rng if rng is not None else Random()
+    clearance = ARROW_WIDTH / 2 + ARROW_SWAY_AMPLITUDE + ARROW_SPAWN_PADDING + PLAYER_HALF_WIDTH
+    positions = [x for x in range(240, WIDTH - 239, 40)
+                 if abs(x - spawn_x) > 2 * PLAYER_HALF_WIDTH
+                 and all(abs(x - ARROW_X[direction]) > clearance
+                         for direction in STAGE_ARROWS[stage_number])]
+    x = rng.choice(positions)
+    return Enemy(x=x, facing=-1 if x > spawn_x else 1)
+
+
+@dataclass
 class Stage:
     items: list[Item]
     number: int = 1
     arrow_time: float = 0.0
+    enemy: Enemy | None = None
     _items_by_stage: dict[int, list[Item]] = field(default_factory=dict, init=False, repr=False)
+    _enemies_by_stage: dict[int, Enemy] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self):
         self._items_by_stage[self.number] = self.items
+        if self.enemy is None:
+            spawn_x = WIDTH / 2 if self.number == 1 else STAGE_ENTRY_LEFT_X
+            self.enemy = spawn_enemy(spawn_x=spawn_x, stage_number=self.number)
+        self._enemies_by_stage[self.number] = self.enemy
 
     @property
     def background_key(self):
         return STAGE_BACKGROUNDS[self.number]
 
+    @property
+    def visible_arrows(self):
+        return tuple(direction for direction in STAGE_ARROWS[self.number]
+                     if direction < 0 or self.enemy.defeated)
+
+    def hit_enemy(self, player):
+        if not player.attacking or player.attack_time != 0.0:
+            return False
+        distance = player.facing * (self.enemy.x - player.x)
+        if 0 <= distance <= ATTACK_RANGE and abs(player.foot_y - self.enemy.foot_y) <= ATTACK_HEIGHT_RANGE:
+            return self.enemy.hit()
+        return False
+
     def update(self, dt):
         self.arrow_time = (self.arrow_time + dt) % ARROW_SWAY_PERIOD
         for index, item in enumerate(self.items):
             self.items[index] = item.update(dt)
+        self.enemy.update(dt)
 
     def try_transition(self, player, controls, rng=None):
-        direction = next((direction for direction in STAGE_ARROWS[self.number]
+        direction = next((direction for direction in self.visible_arrows
                           if abs(player.x - ARROW_X[direction]) <= ARROW_TRIGGER_HALF_WIDTH), 0)
         destination = self.number + direction
         if not direction or destination not in STAGE_BACKGROUNDS:
@@ -109,9 +181,12 @@ class Stage:
         entry_x = STAGE_ENTRY_LEFT_X if direction > 0 else STAGE_ENTRY_RIGHT_X
         if destination not in self._items_by_stage:
             self._items_by_stage[destination] = spawn_items(rng, spawn_x=entry_x, stage_number=destination)
+            self._enemies_by_stage[destination] = spawn_enemy(rng, spawn_x=entry_x, stage_number=destination)
         self._items_by_stage[self.number] = self.items
+        self._enemies_by_stage[self.number] = self.enemy
         self.number = destination
         self.items = self._items_by_stage[destination]
+        self.enemy = self._enemies_by_stage[destination]
         player.x = entry_x
         controls.jump_requested = controls.pickup_requested = controls.attack_requested = False
         # Airborne transitions move only x; preserve the entire ongoing jump.
@@ -199,6 +274,7 @@ class Player:
         return True
 
     def update(self, dt, controls):
+        attack_started = False
         if self.attack_time is not None:
             self.attack_time += dt
             if self.attack_time >= ATTACK_DURATION - 1e-9:
@@ -206,6 +282,7 @@ class Player:
             # Requests made during an attack cannot queue or restart it.
         elif controls.attack_requested:
             self.attack_time = 0.0
+            attack_started = True
         controls.attack_requested = False
 
         if controls.jump_requested and (self.grounded or 0 < self.jump_count < MAX_JUMPS):
@@ -241,3 +318,4 @@ class Player:
         if next_state == "JUMP":
             # Keep the pose aligned with the physical arc, including long frames.
             self.animation_time = (JUMP_SPEED - self.vertical_speed) / GRAVITY
+        return attack_started

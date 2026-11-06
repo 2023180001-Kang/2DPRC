@@ -6,7 +6,7 @@ import pico2d.pico2d as core
 import resources
 import sdl2
 
-from game import Item, Player
+from game import Enemy, Item, Player
 from settings import ARROW_X, STAGE_ENTRY_LEFT_X
 
 
@@ -23,6 +23,7 @@ class LifecycleTests(unittest.TestCase):
             "arrow_right": Mock(texture=sentinel.arrow_right_texture),
             "armed_character": Mock(texture=sentinel.armed_character_texture),
             "right_hand": Mock(texture=sentinel.right_hand_texture),
+            "enemy": Mock(texture=sentinel.enemy_texture),
         }
         self.retained_images = tuple(self.images.values())
         self.textures = {image.texture: image for image in self.retained_images}
@@ -41,6 +42,7 @@ class LifecycleTests(unittest.TestCase):
         self.items = []
         self.spawn_items = Mock(return_value=self.items)
         self.draw_items = Mock()
+        self.draw_enemy = Mock()
         self.draw_character = Mock()
         self.draw_held_weapon = Mock()
         self.draw_falling_items = Mock()
@@ -66,12 +68,14 @@ class LifecycleTests(unittest.TestCase):
                 draw_background=self.draw_background, draw_character=self.draw_character,
                 draw_health=self.draw_health, spawn_items=self.spawn_items,
                 draw_items=self.draw_items,
+                draw_enemy=self.draw_enemy,
                 draw_held_weapon=self.draw_held_weapon,
                 draw_falling_items=self.draw_falling_items,
                 draw_pickup_hint=self.draw_pickup_hint,
                 draw_stage_arrows=self.draw_stage_arrows,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
             ),
+            patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD")),
         ]
         for patcher in patches:
             patcher.start()
@@ -107,6 +111,7 @@ class LifecycleTests(unittest.TestCase):
         drawing.attach_mock(self.draw_background, "background")
         drawing.attach_mock(self.draw_stage_arrows, "arrows")
         drawing.attach_mock(self.draw_items, "items")
+        drawing.attach_mock(self.draw_enemy, "enemy")
         drawing.attach_mock(self.draw_character, "character")
         drawing.attach_mock(self.draw_held_weapon, "weapon")
         drawing.attach_mock(self.draw_falling_items, "falling_items")
@@ -132,8 +137,9 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(player.health, 3)
         self.assertEqual(drawing.mock_calls, [
             call.background(self.retained_images[0]),
-            call.arrows(self.images, 1, ANY),
+            call.arrows(self.images, 1, ANY, directions=(1,)),
             call.items(self.images, self.items),
+            call.enemy(self.retained_images[-1], ANY),
             call.character(self.retained_images[1], player),
             call.weapon(self.images, player),
             call.falling_items(self.images, self.items),
@@ -302,7 +308,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result["stage"], 2)
         spawn.assert_called_once_with(None, spawn_x=STAGE_ENTRY_LEFT_X, stage_number=2)
         self.assertEqual(self.draw_background.call_args_list, [call(self.retained_images[5])] * 2)
-        self.assertEqual(self.draw_stage_arrows.call_args_list, [call(self.images, 2, ANY)] * 2)
+        self.assertEqual(self.draw_stage_arrows.call_args_list, [call(self.images, 2, ANY, directions=(-1, 1))] * 2)
         self.assertEqual(self.draw_items.call_args_list, [call(self.images, second_items)] * 2)
         self.assertEqual((player.x, player.health, player.weapon), (STAGE_ENTRY_LEFT_X, 2, "dagger"))
         self.assert_images_released_before_close()

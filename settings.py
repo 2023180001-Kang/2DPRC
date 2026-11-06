@@ -58,3 +58,10 @@ WEAPON_CARRY_ANGLE = 90
 WEAPON_ATTACK_ANGLES = (90, 120, 65, 20, -10, 40, 75, 90)
 # Grip coordinates in the original item's image, normalized from bottom-left.
 WEAPON_GRIPS = {"dagger": (0.20, 0.50), "steel_pipe": (0.90, 0.35)}
+ENEMY_SOURCE = "enemy_pico2d_2048x1024.png"
+ENEMY_SCALE = 0.6
+ENEMY_IDLE_FPS = 6
+ENEMY_DEATH_FPS = 8
+ENEMY_DEATH_DURATION = FRAME_COUNT / ENEMY_DEATH_FPS
+ATTACK_RANGE = 100.0
+ATTACK_HEIGHT_RANGE = 80.0

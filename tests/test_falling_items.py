@@ -3,12 +3,17 @@ from random import Random
 import unittest
 from unittest.mock import Mock, patch
 
-from game import Controls, Item, Player, Stage
+from game import Controls, Enemy, Item, Player, Stage
 from rendering import draw_falling_items, draw_items, draw_pickup_hint
 from settings import AIR_DROP_HEIGHT, ARROW_X, GRAVITY, GROUND_Y, ITEM_WIDTHS
 
 
 class FallingItemTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_air_drop_in_both_maps_and_directions_while_rising_or_falling(self):
         for number in (1, 2):
             for kind in ITEM_WIDTHS:

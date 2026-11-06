@@ -9,7 +9,7 @@ import sdl2
 
 import main
 from events import poll_events
-from game import Item, Player
+from game import Enemy, Item, Player
 from rendering import draw_character, draw_health, draw_held_weapon
 from resources import ROOT, load_images, release_images
 from settings import ANIMATIONS, ARMED_ANIMATION_ROWS, ATTACK_FPS, RUN_SPEED, WIDTH
@@ -127,11 +127,12 @@ def verify_gameplay(output):
     stages = []
     draw_arrows = main.draw_stage_arrows
 
-    def observe_stage(images, number, elapsed):
+    def observe_stage(images, number, elapsed, **kwargs):
         stages.append(number)
-        draw_arrows(images, number, elapsed)
+        draw_arrows(images, number, elapsed, **kwargs)
 
     with (patch("main.Player", return_value=player), patch("main.spawn_items", return_value=items),
+          patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD")),
           patch("main.poll_events", side_effect=feed), patch("main.perf_counter", side_effect=lambda: clock),
           patch("main.sleep"), patch("main.draw_character", side_effect=observe),
           patch("main.draw_health", side_effect=observe_health),

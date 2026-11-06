@@ -6,7 +6,7 @@ from game import Controls, Enemy, Item, Player, Stage
 from rendering import draw_character, draw_held_weapon
 from settings import (
     ANIMATIONS, ARMED_ANIMATION_ROWS, ARROW_X, ATTACK_DURATION, ATTACK_FPS,
-    CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, GROUND_Y, JUMP_DURATION, RUN_SPEED,
+    CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, GROUND_Y, JUMP_DURATION, MOVE_ACCELERATION,
     WEAPON_GRIPS, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
@@ -102,7 +102,8 @@ class AttackTests(unittest.TestCase):
         self.tap(reference_controls, "space")
         player.update(0.1, controls)
         reference.update(0.1, reference_controls)
-        self.assertEqual(player.x, WIDTH / 2 + RUN_SPEED * 0.1)
+        self.assertEqual(player.x, WIDTH / 2 + 0.5 * MOVE_ACCELERATION * 0.1 ** 2)
+        self.assertEqual(player.horizontal_speed, MOVE_ACCELERATION * 0.1)
         self.assertEqual((player.x, player.foot_y, player.vertical_speed),
                          (reference.x, reference.foot_y, reference.vertical_speed))
         self.assertEqual((player.display_state, player.state, player.jump_count), ("ATTACK", "JUMP", 1))

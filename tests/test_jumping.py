@@ -219,7 +219,7 @@ class JumpingTests(unittest.TestCase):
         elapsed = JUMP_DURATION / 8
         for shift in ("lshift", "rshift"):
             with self.subTest(shift=shift):
-                controls, player = Controls(), Player()
+                controls, player = Controls(), Player(horizontal_speed=WALK_SPEED)
                 controls.set_key("space", True)
                 controls.set_key("right", True)
                 player.update(elapsed, controls)
@@ -229,8 +229,13 @@ class JumpingTests(unittest.TestCase):
                 controls.set_key("left", True)
                 controls.set_key(shift, True)
                 self.assertTrue(controls.running)
+                reference = Player(x=player.x, horizontal_speed=player.horizontal_speed)
+                reference.update(elapsed, Controls({"left", shift}))
                 player.update(elapsed, controls)
-                self.assertAlmostEqual(player.x, WIDTH / 2 + (WALK_SPEED - RUN_SPEED) * elapsed)
+                self.assertAlmostEqual(player.x, reference.x)
+                self.assertAlmostEqual(player.horizontal_speed, reference.horizontal_speed)
+                self.assertGreater(player.horizontal_speed, -RUN_SPEED)
+                self.assertLess(player.horizontal_speed, 0)
                 self.assertEqual((player.state, player.facing), ("JUMP", -1))
 
     def test_airborne_horizontal_bounds(self):

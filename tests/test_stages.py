@@ -1,3 +1,4 @@
+from math import log1p
 from random import Random
 import unittest
 from unittest.mock import Mock, patch
@@ -10,7 +11,7 @@ from resources import IMAGE_FILES, ROOT
 from settings import (
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_TRIGGER_HALF_WIDTH,
     ARROW_WIDTH, ARROW_X, GROUND_Y, HEIGHT, ITEM_WIDTHS, PLAYER_HALF_WIDTH, RUN_SPEED,
-    STAGE_ARROWS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
+    GROUND_DRAG, GROUND_FRICTION, STAGE_ARROWS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
 )
 
 
@@ -217,7 +218,8 @@ class StageTests(unittest.TestCase):
             for shifts in (set(), {"lshift"}, {"rshift"}, {"lshift", "rshift"}):
                 with self.subTest(stage=number, shifts=shifts):
                     stage = Stage(items=[], number=number)
-                    player = Player(x=ARROW_X[direction], weapon="dagger")
+                    speed = RUN_SPEED if shifts else WALK_SPEED
+                    player = Player(x=ARROW_X[direction], weapon="dagger", horizontal_speed=direction * speed)
                     held = {key, "f", "space"} | shifts
                     controls = Controls(held=held.copy(), jump_requested=True, pickup_requested=True)
                     self.assertTrue(stage.try_transition(player, controls, Random(1)))
@@ -225,16 +227,19 @@ class StageTests(unittest.TestCase):
                     self.assertEqual(controls.held, held)
                     expected_state = "RUN" if shifts else "WALK"
                     self.assertEqual(player.state, expected_state)
+                    self.assertEqual(player.horizontal_speed, direction * speed)
                     self.assertFalse(player.pick_up(stage.items, controls))
                     player.update(0.1, controls)
-                    speed = RUN_SPEED if shifts else WALK_SPEED
                     self.assertAlmostEqual(player.x, start_x + direction * speed * 0.1)
                     self.assertTrue(player.grounded)
                     self.assertEqual((player.weapon, player.jump_count), ("dagger", 0))
                     controls.set_key(key, False)
                     stopped_x = player.x
-                    player.update(0.1, controls)
-                    self.assertEqual((player.x, player.state), (stopped_x, "IDLE"))
+                    player.update(1.0, controls)
+                    stop_time = log1p(GROUND_DRAG * speed / GROUND_FRICTION) / GROUND_DRAG
+                    stop_distance = (speed - GROUND_FRICTION * stop_time) / GROUND_DRAG
+                    self.assertAlmostEqual(player.x, stopped_x + direction * stop_distance)
+                    self.assertEqual((player.horizontal_speed, player.state), (0, "IDLE"))
 
     def test_arrow_sway_is_bounded_periodic_and_stays_on_screen(self):
         images = {key: Mock(w=512, h=320) for key in ("arrow_left", "arrow_right")}

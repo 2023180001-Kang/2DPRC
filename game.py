@@ -1,6 +1,7 @@
 """Pure Python game state, usable in tests without opening a window."""
 
 from dataclasses import dataclass, field, replace
+from math import ceil, exp, expm1, log1p, sqrt
 from random import Random
 
 from settings import (
@@ -10,6 +11,10 @@ from settings import (
     PICKUP_RADIUS, PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_BACKGROUNDS,
     STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
     ATTACK_HEIGHT_RANGE, ATTACK_RANGE, ENEMY_DEATH_DURATION, ENEMY_DEATH_FPS, ENEMY_IDLE_FPS,
+    MOVE_ACCELERATION, MOVE_DECELERATION, RUN_ANIMATION_REFERENCE_SPEED, TURN_DECELERATION,
+    AIR_DRAG, GROUND_DRAG, GROUND_FRICTION,
+    COLLISION_STEP, CORPSE_HALF_WIDTH, CORPSE_HEIGHT, ENEMY_BODY_HALF_WIDTH, ENEMY_BODY_HEIGHT,
+    PLAYER_BODY_HALF_WIDTH, PLAYER_BODY_HEIGHT,
 )
 
 
@@ -99,6 +104,14 @@ class Enemy:
         return 0 if self.state == "IDLE" else 3
 
     @property
+    def collision_bounds(self):
+        progress = 1.0 if self.defeated else (
+            min(1.0, self.animation_time / ENEMY_DEATH_DURATION) if self.state == "DYING" else 0.0)
+        half_width = ENEMY_BODY_HALF_WIDTH + (CORPSE_HALF_WIDTH - ENEMY_BODY_HALF_WIDTH) * progress
+        height = ENEMY_BODY_HEIGHT + (CORPSE_HEIGHT - ENEMY_BODY_HEIGHT) * progress
+        return self.x - half_width, self.foot_y, self.x + half_width, self.foot_y + height
+
+    @property
     def frame(self):
         if self.defeated:
             return FRAME_COUNT - 1
@@ -131,6 +144,40 @@ def spawn_enemy(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
                          for direction in STAGE_ARROWS[stage_number])]
     x = rng.choice(positions)
     return Enemy(x=x, facing=-1 if x > spawn_x else 1)
+
+
+def _integrate_speed(speed, target, acceleration, dt):
+    """Integrate the ramp and any remaining constant-speed time exactly."""
+    difference = target - speed
+    if abs(difference) <= 1e-9:
+        return target, target * dt
+    ramp_time = min(dt, abs(difference) / acceleration)
+    signed_acceleration = acceleration if difference > 0 else -acceleration
+    next_speed = speed + signed_acceleration * ramp_time
+    if dt >= abs(difference) / acceleration:
+        next_speed = target
+    distance = speed * ramp_time + 0.5 * signed_acceleration * ramp_time ** 2
+    return next_speed, distance + target * (dt - ramp_time)
+
+
+def _integrate_friction(speed, dt, grounded):
+    """Integrate unpowered motion without crossing zero or depending on FPS."""
+    if speed == 0 or dt == 0:
+        return speed, 0.0
+    if not grounded:
+        decay = expm1(-AIR_DRAG * dt)
+        return speed * exp(-AIR_DRAG * dt), -speed * decay / AIR_DRAG
+    magnitude = abs(speed)
+    stop_time = log1p(GROUND_DRAG * magnitude / GROUND_FRICTION) / GROUND_DRAG
+    elapsed = min(dt, stop_time)
+    terminal_offset = GROUND_FRICTION / GROUND_DRAG
+    decay = expm1(-GROUND_DRAG * elapsed)
+    next_magnitude = max(0.0, magnitude + (magnitude + terminal_offset) * decay)
+    if dt >= stop_time or next_magnitude < 1e-9:
+        next_magnitude = 0.0
+    distance = (-(magnitude + terminal_offset) * decay - GROUND_FRICTION * elapsed) / GROUND_DRAG
+    sign = 1 if speed > 0 else -1
+    return sign * next_magnitude, sign * max(0.0, distance)
 
 
 @dataclass
@@ -179,6 +226,7 @@ class Stage:
         if not direction or destination not in STAGE_BACKGROUNDS:
             return False
         entry_x = STAGE_ENTRY_LEFT_X if direction > 0 else STAGE_ENTRY_RIGHT_X
+        was_grounded = player.grounded
         if destination not in self._items_by_stage:
             self._items_by_stage[destination] = spawn_items(rng, spawn_x=entry_x, stage_number=destination)
             self._enemies_by_stage[destination] = spawn_enemy(rng, spawn_x=entry_x, stage_number=destination)
@@ -188,9 +236,15 @@ class Stage:
         self.items = self._items_by_stage[destination]
         self.enemy = self._enemies_by_stage[destination]
         player.x = entry_x
+        player.support_y = GROUND_Y
+        # A fast step may reach the screen clamp and the exit together. Keep
+        # that step's momentum when it is a valid transition, not a wall stop.
+        if player.boundary_speed:
+            player.horizontal_speed = player.boundary_speed
+            player.boundary_speed = 0.0
         controls.jump_requested = controls.pickup_requested = controls.attack_requested = False
         # Airborne transitions move only x; preserve the entire ongoing jump.
-        if player.grounded:
+        if was_grounded:
             player.foot_y = GROUND_Y
             player.vertical_speed = 0.0
             player.jump_count = 0
@@ -213,10 +267,13 @@ class Player:
     weapon: str | None = None
     jump_count: int = 0
     attack_time: float | None = None
+    horizontal_speed: float = 0.0
+    boundary_speed: float = 0.0
+    support_y: float = GROUND_Y
 
     @property
     def grounded(self):
-        return self.foot_y <= GROUND_Y and self.vertical_speed == 0.0
+        return self.foot_y <= self.support_y and self.vertical_speed == 0.0
 
     @property
     def frame(self):
@@ -273,7 +330,85 @@ class Player:
                 items.append(Item(previous, self.x, self.foot_y + AIR_DROP_HEIGHT, falling=True))
         return True
 
-    def update(self, dt, controls):
+    def move_horizontally(self, dt, controls, air_time=0.0):
+        self.boundary_speed = 0.0
+        if not controls.focused:
+            self.horizontal_speed = 0.0
+            return 0.0, False
+        target = controls.direction * (RUN_SPEED if controls.running else WALK_SPEED)
+        distance = travel = 0.0
+        if target == 0:
+            # Keep momentum in the air, then apply floor friction only for the
+            # portion of this frame after landing. Both integrals are exact.
+            self.horizontal_speed, air_distance = _integrate_friction(self.horizontal_speed, air_time, False)
+            self.horizontal_speed, ground_distance = _integrate_friction(self.horizontal_speed, dt - air_time, True)
+            distance = air_distance + ground_distance
+            travel = abs(air_distance) + abs(ground_distance)
+        else:
+            # Active direction input supplies traction/braking toward its target.
+            if self.horizontal_speed * target < 0:
+                brake_time = min(dt, abs(self.horizontal_speed) / TURN_DECELERATION)
+                self.horizontal_speed, distance = _integrate_speed(
+                    self.horizontal_speed, 0.0, TURN_DECELERATION, brake_time)
+                travel = abs(distance)
+                dt -= brake_time
+            rate = MOVE_DECELERATION if abs(target) < abs(self.horizontal_speed) else MOVE_ACCELERATION
+            self.horizontal_speed, remaining_distance = _integrate_speed(self.horizontal_speed, target, rate, dt)
+            distance += remaining_distance
+            travel += abs(remaining_distance)
+        self.x = max(PLAYER_HALF_WIDTH, min(WIDTH - PLAYER_HALF_WIDTH, self.x + distance))
+        blocked = ((self.x <= PLAYER_HALF_WIDTH and self.horizontal_speed < 0)
+                   or (self.x >= WIDTH - PLAYER_HALF_WIDTH and self.horizontal_speed > 0))
+        if blocked:
+            self.boundary_speed = self.horizontal_speed
+            self.horizontal_speed = 0.0
+        return travel, blocked
+
+    def _prepare_support(self, obstacle):
+        left, _, right, top = obstacle.collision_bounds
+        on_top = (obstacle.defeated and left - PLAYER_BODY_HALF_WIDTH < self.x < right + PLAYER_BODY_HALF_WIDTH
+                  and abs(self.foot_y - top) <= 1e-7 and self.vertical_speed == 0)
+        was_supported = self.grounded and self.support_y > GROUND_Y
+        self.support_y = top if on_top else GROUND_Y
+        if was_supported and not on_top and self.foot_y > GROUND_Y:
+            self.jump_count = max(1, self.jump_count)
+
+    def _resolve_enemy_collision(self, obstacle, old_x, old_y):
+        left, bottom, right, top = obstacle.collision_bounds
+        left -= PLAYER_BODY_HALF_WIDTH
+        right += PLAYER_BODY_HALF_WIDTH
+        overlaps = left + 1e-8 < self.x < right - 1e-8
+        landed = (obstacle.defeated and overlaps and self.vertical_speed <= 0
+                  and old_y >= top - 1e-8 and self.foot_y <= top + 1e-8)
+        if landed:
+            self.foot_y, self.vertical_speed, self.jump_count = top, 0.0, 0
+            self.support_y = top
+        # Living/falling enemies cannot be bypassed by jumping. A completed
+        # corpse is a low solid: only trajectories below its top hit its sides.
+        blocks_side = (not obstacle.defeated or
+                       (min(old_y, self.foot_y) < top - 1e-8
+                        and max(old_y, self.foot_y) + PLAYER_BODY_HEIGHT > bottom + 1e-8))
+        blocked = False
+        if blocks_side:
+            if old_x <= left + 1e-8 and self.x > left:
+                self.x, blocked = left, True
+            elif old_x >= right - 1e-8 and self.x < right:
+                self.x, blocked = right, True
+            elif left < self.x < right:
+                self.x = left if old_x < obstacle.x or (old_x == obstacle.x and self.facing > 0) else right
+                blocked = True
+        if blocked:
+            self.horizontal_speed = self.boundary_speed = 0.0
+        if self.support_y > GROUND_Y and not (
+                obstacle.defeated and left < self.x < right and abs(self.foot_y - top) <= 1e-7
+                and self.vertical_speed == 0):
+            was_grounded = self.grounded
+            self.support_y = GROUND_Y
+            if was_grounded:
+                self.jump_count = max(1, self.jump_count)
+        return landed
+
+    def update(self, dt, controls, obstacle=None):
         attack_started = False
         if self.attack_time is not None:
             self.attack_time += dt
@@ -285,37 +420,67 @@ class Player:
             attack_started = True
         controls.attack_requested = False
 
+        if obstacle is None:
+            self._update_motion(dt, controls)
+        else:
+            steps = max(1, ceil(dt / COLLISION_STEP))
+            step = dt / steps
+            boundary_speed = 0.0
+            for _ in range(steps):
+                self._prepare_support(obstacle)
+                old_x, old_y = self.x, self.foot_y
+                self._update_motion(step, controls)
+                if abs(self.boundary_speed) > abs(boundary_speed):
+                    boundary_speed = self.boundary_speed
+                landed = self._resolve_enemy_collision(obstacle, old_x, old_y)
+                if landed or (self.state != "JUMP" and not self.grounded):
+                    self._update_motion(0, controls)
+            if self.x in (PLAYER_HALF_WIDTH, WIDTH - PLAYER_HALF_WIDTH):
+                self.boundary_speed = boundary_speed
+        return attack_started
+
+    def _update_motion(self, dt, controls):
         if controls.jump_requested and (self.grounded or 0 < self.jump_count < MAX_JUMPS):
             self.jump_count = 1 if self.grounded else self.jump_count + 1
             self.vertical_speed = JUMP_SPEED
         controls.jump_requested = False
 
+        air_time = 0.0
         if not self.grounded:
+            height = max(0.0, self.foot_y - self.support_y)
+            landing_time = (self.vertical_speed + sqrt(self.vertical_speed ** 2 + 2 * GRAVITY * height)) / GRAVITY
+            air_time = min(dt, landing_time)
             self.foot_y += self.vertical_speed * dt - 0.5 * GRAVITY * dt * dt
             self.vertical_speed -= GRAVITY * dt
             # Exact integration still leaves subpixel rounding at the landing time.
-            if self.foot_y <= GROUND_Y + 1e-9 and self.vertical_speed <= 0:
-                self.foot_y = GROUND_Y
+            if self.foot_y <= self.support_y + 1e-9 and self.vertical_speed <= 0:
+                self.foot_y = self.support_y
                 self.vertical_speed = 0.0
                 self.jump_count = 0
 
-        if controls.direction:
-            self.facing = controls.direction
-        speed = RUN_SPEED if controls.running else WALK_SPEED
-        self.x += controls.direction * speed * dt
-        self.x = max(PLAYER_HALF_WIDTH, min(WIDTH - PLAYER_HALF_WIDTH, self.x))
-        next_state = "WALK" if controls.direction else "IDLE"
-        if controls.direction and controls.running:
+        direction = controls.direction if controls.focused else 0
+        if direction:
+            self.facing = direction
+        travel, blocked = self.move_horizontally(dt, controls, air_time)
+        moving = bool(direction) or abs(self.horizontal_speed) > 1e-9
+        next_state = "WALK" if moving else "IDLE"
+        if (direction and controls.running) or abs(self.horizontal_speed) > WALK_SPEED + 1e-9:
             next_state = "RUN"
         if not self.grounded:
             next_state = "JUMP"
+        continuing = next_state == self.state or {next_state, self.state} <= {"WALK", "RUN"}
         if next_state != self.state:
+            # Preserve the gait cycle instead of snapping to frame zero when
+            # Shift changes the locomotion row during acceleration/braking.
+            phase = self.animation_time * ANIMATIONS[self.state][1] / FRAME_COUNT if continuing else 0.0
             self.state = next_state
-            self.animation_time = 0.0
-        elif next_state != "JUMP":
+            self.animation_time = phase * FRAME_COUNT / ANIMATIONS[next_state][1]
+        if next_state != "JUMP" and continuing:
             duration = FRAME_COUNT / ANIMATIONS[self.state][1]
-            self.animation_time = (self.animation_time + dt) % duration
+            elapsed = dt
+            if next_state in {"WALK", "RUN"} and not blocked:
+                elapsed = travel / (RUN_ANIMATION_REFERENCE_SPEED if next_state == "RUN" else WALK_SPEED)
+            self.animation_time = (self.animation_time + elapsed) % duration
         if next_state == "JUMP":
             # Keep the pose aligned with the physical arc, including long frames.
             self.animation_time = (JUMP_SPEED - self.vertical_speed) / GRAVITY
-        return attack_started

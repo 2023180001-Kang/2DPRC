@@ -2,7 +2,7 @@ import itertools
 import unittest
 
 from game import Controls, Player
-from settings import ANIMATIONS
+from settings import ANIMATIONS, WALK_SPEED
 
 
 class InputTests(unittest.TestCase):
@@ -136,13 +136,13 @@ class InputTests(unittest.TestCase):
         self.assertEqual((player.state, player.frame, player.animation_time), ("WALK", 0, 0))
 
     def test_unchanged_state_does_not_reset_animation(self):
-        controls, player = Controls({"right"}), Player()
+        controls, player = Controls({"right"}), Player(horizontal_speed=WALK_SPEED)
         player.update(0, controls)
         player.update(0.25, controls)
         self.assertEqual(player.frame, 2)
 
     def test_direction_change_keeps_same_state_animation(self):
-        controls, player = Controls({"right"}), Player()
+        controls, player = Controls({"right"}), Player(horizontal_speed=WALK_SPEED)
         player.update(0, controls)
         player.update(0.25, controls)
         controls.held = {"left"}

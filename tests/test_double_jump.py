@@ -96,7 +96,7 @@ class DoubleJumpTests(unittest.TestCase):
     def test_shift_steering_weapon_persistence_and_ground_only_pickup(self):
         for shift in ("lshift", "rshift"):
             with self.subTest(shift=shift):
-                controls, player = Controls(), Player(weapon="dagger")
+                controls, player = Controls(), Player(weapon="dagger", horizontal_speed=-RUN_SPEED)
                 controls.set_key("left", True)
                 controls.set_key(shift, True)
                 start_x = player.x

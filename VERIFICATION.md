@@ -7,6 +7,30 @@
 - 입력은 실제 SDL 큐에 합성 키/포커스/창 닫기/종료 이벤트를 넣어 검증했습니다. 물리 키보드나 마우스를 사람이 직접 조작한 검증과는 구분합니다.
 - 실제 렌더러의 픽셀을 캡처하여 대기, 좌우 걷기, 달리기, 점프, 경계 화면을 시각적으로 검토했습니다.
 
+## 적 통과 차단·시체 측면 충돌 및 위 착지 검증
+
+요구 사항 `aef4e86`, 구현 `8e662d8` 기준이며 PRD 34절과 AC-69~70을 따릅니다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 자동 테스트 | 238개 통과 |
+| 생존·쓰러짐 | 양방향 달리기·공중 우회 차단, 접촉면 수평 속도 제거, 몸체 폭 확장 시 같은 쪽으로 겹침 보정 |
+| 접촉 공격 | 맨손·단검·쇠파이프 A 한 번에 쓰러짐 시작, 내부 이동 분할에 공격 반복/시간 중복 없음 |
+| 시체 충돌 | 측면 걷기·달리기·마찰 관통 없음, 점프 없이 자동 올라타기 없음, 위 착지·지지·더블 점프·가장자리 낙하 |
+| 저/고 FPS | 2/30/60/144 FPS에서도 적·시체 접촉면을 통과하지 않음 |
+| 실제 SDL | 방향키·Shift·Space·A의 실제 게임 루프 430프레임 통과. 위치 순간 이동 없이 적 접근부터 시체 넘기까지 수행 |
+| 기존 회귀 | 적 진행 해제/재방문 180프레임 및 무기·가속·마찰 380프레임 통과 |
+| 일반 실행 | 180프레임, 약 3.054초, 평균 58.94 FPS, 정상 종료 |
+
+`python -m tools.verify_body_collision`로 화면 11장과 `artifacts/body-collision-runtime.json`을 생성했습니다. 접촉·시체·위 착지·점프 통과 캡처를 열어 확인했습니다.
+
+- `artifacts/collision-live-contact.png`, `collision-live-jump-blocked.png`: 적 접촉과 공중 우회 차단.
+- `artifacts/collision-corpse-contact.png`, `collision-corpse-right-contact.png`: 시체의 양쪽 측면 차단.
+- `artifacts/collision-standing-on-corpse.png`, `collision-walk-off-fall.png`: 시체 위 발 높이 180에 서기와 가장자리 낙하.
+- `artifacts/collision-jump-over-corpse.png`, `collision-beyond-corpse-landed.png`: 시체를 점프로 넘은 뒤 보도에 착지.
+
+축약한 파일 경로도 모두 `artifacts/` 아래입니다. 아래는 이전 버전의 검증 이력입니다.
+
 ## 적 1명·한 번의 공격·완전 쓰러짐 이후 진행 검증
 
 요구 사항 `ad2d91a`, 구현 `b479728` 기준이며 PRD 5.12·30절 및 AC-65~68을 따릅니다.

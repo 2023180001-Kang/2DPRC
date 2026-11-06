@@ -12,7 +12,7 @@ from events import poll_events
 from game import Enemy, Item, Player
 from rendering import draw_character, draw_health, draw_held_weapon
 from resources import ROOT, load_images, release_images
-from settings import ANIMATIONS, ARMED_ANIMATION_ROWS, ATTACK_FPS, RUN_SPEED, WIDTH
+from settings import ANIMATIONS, ARMED_ANIMATION_ROWS, ATTACK_FPS, GROUND_Y, RUN_SPEED, WIDTH
 from tools.verify_runtime import capture, push
 
 
@@ -74,13 +74,13 @@ def verify_gameplay(output):
         141: [("focus", True)],
         220: [("down", "f"), ("up", "f")],
         225: [("down", "right"), ("down", "lshift")],
-        270: [("up", "right"), ("up", "lshift"), ("down", "left"), ("down", "rshift")],
-        320: [("up", "left"), ("up", "rshift")],
-        330: [("quit", None)],
+        290: [("up", "right"), ("up", "lshift"), ("down", "left"), ("down", "rshift")],
+        355: [("up", "left"), ("up", "rshift")],
+        380: [("quit", None)],
     }
     checkpoints = {
         0: ("dagger", "IDLE"), 8: ("dagger", "ATTACK"), 40: ("dagger", "IDLE"),
-        50: ("dagger", "ATTACK"), 65: ("steel_pipe", "IDLE"), 78: ("steel_pipe", "ATTACK"),
+        50: ("dagger", "ATTACK"), 65: ("steel_pipe", "WALK"), 78: ("steel_pipe", "ATTACK"),
         105: (None, "IDLE"), 107: (None, "ATTACK"),
         115: ("steel_pipe", "ATTACK"), 128: ("steel_pipe", "ATTACK"),
         130: (None, "JUMP"), 140: (None, "JUMP"), 220: ("steel_pipe", "IDLE"),
@@ -115,11 +115,12 @@ def verify_gameplay(output):
         if tick == 128:
             assert current.jump_count == 2
         records.append({"tick": tick, "x": current.x, "row": current.row, "frame": current.frame,
-                        "state": current.display_state, "weapon": current.weapon})
+                        "state": current.display_state, "weapon": current.weapon,
+                        "horizontal_speed": current.horizontal_speed})
 
     def observe_health(image, current):
         draw_health(image, current)
-        if tick in checkpoints or tick in (245, 280):
+        if tick in checkpoints or tick in (245, 310):
             filename = f"weapon-gameplay-{tick:03d}.png"
             capture(output / filename)
             shots.append(filename)
@@ -132,19 +133,31 @@ def verify_gameplay(output):
         draw_arrows(images, number, elapsed, **kwargs)
 
     with (patch("main.Player", return_value=player), patch("main.spawn_items", return_value=items),
-          patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD")),
+          patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD", foot_y=GROUND_Y - 1000)),
           patch("main.poll_events", side_effect=feed), patch("main.perf_counter", side_effect=lambda: clock),
           patch("main.sleep"), patch("main.draw_character", side_effect=observe),
           patch("main.draw_health", side_effect=observe_health),
           patch("main.draw_stage_arrows", side_effect=observe_stage)):
-        result = main.run(frame_limit=340)
-    assert result["frames"] == 330
-    assert stages[225] == 1 and 2 in stages[225:270] and stages[320] == 1
-    assert abs(records[230]["x"] - records[229]["x"] - RUN_SPEED / 60) < 1e-6
-    assert abs(records[280]["x"] - records[279]["x"] + RUN_SPEED / 60) < 1e-6
+        result = main.run(frame_limit=390)
+    assert result["frames"] == 380
+    assert stages[225] == 1 and 2 in stages[225:290] and stages[370] == 1
+    assert 0 < records[225]["horizontal_speed"] < records[230]["horizontal_speed"] < RUN_SPEED
+    assert abs(records[260]["horizontal_speed"] - RUN_SPEED) < 1e-6
+    assert 0 < records[290]["horizontal_speed"] < RUN_SPEED
+    assert -RUN_SPEED < records[310]["horizontal_speed"] < 0
+    assert records[354]["horizontal_speed"] < records[355]["horizontal_speed"] < records[360]["horizontal_speed"] < 0
+    assert records[360]["horizontal_speed"] < records[370]["horizontal_speed"] < records[375]["horizontal_speed"] < 0
+    assert records[379]["horizontal_speed"] == 0
+    coast_distance = records[354]["x"] - records[379]["x"]
+    assert 120 < coast_distance < 150
+    assert abs(records[260]["x"] - records[259]["x"] - RUN_SPEED / 60) < 1e-6
+    assert abs(records[340]["x"] - records[339]["x"] + RUN_SPEED / 60) < 1e-6
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"frames": result["frames"], "fixed_dt": 1 / 60, "run_speed": RUN_SPEED,
-            "checkpoints": "PASS", "bidirectional_stage_run": "PASS", "screenshots": shots}
+            "checkpoints": "PASS", "bidirectional_stage_run": "PASS", "smooth_acceleration": "PASS",
+            "friction_coast": "PASS", "coast_distance": coast_distance,
+            "speed_samples": [records[tick] for tick in (225, 230, 240, 250, 290, 299, 310, 355, 360, 370, 375, 379)],
+            "screenshots": shots}
 
 
 if __name__ == "__main__":

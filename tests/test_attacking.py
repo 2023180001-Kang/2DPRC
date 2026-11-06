@@ -6,12 +6,13 @@ from game import Controls, Item, Player, Stage
 from rendering import draw_character, draw_held_weapon
 from settings import (
     ANIMATIONS, ARMED_ANIMATION_ROWS, ARROW_X, ATTACK_DURATION, ATTACK_FPS,
-    FRAME_COUNT, FRAME_HEIGHT, GRAVITY, GROUND_Y, JUMP_DURATION, RUN_SPEED, WIDTH,
+    CHARACTER_SCALE, FRAME_COUNT, FRAME_HEIGHT, GROUND_Y, JUMP_DURATION, RUN_SPEED,
+    WEAPON_GRIPS, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
 class AttackTests(unittest.TestCase):
-    def tap(self, controls, key="z"):
+    def tap(self, controls, key="a"):
         controls.set_key(key, False)
         controls.set_key(key, True)
         controls.set_key(key, False)
@@ -51,39 +52,47 @@ class AttackTests(unittest.TestCase):
 
     def test_hold_repeat_and_mid_attack_tap_do_not_restart_or_queue(self):
         player, controls = Player(weapon="dagger"), Controls()
-        controls.set_key("z", True)
+        controls.set_key("a", True)
         player.update(0, controls)
         player.update(0.2, controls)
         self.tap(controls)
         player.update(0.1, controls)
         self.assertAlmostEqual(player.attack_time, 0.3)
-        controls.set_key("z", True)
+        controls.set_key("a", True)
         player.update(0.2, controls)
         player.update(1, controls)
-        controls.set_key("z", True)
+        controls.set_key("a", True)
         player.update(0, controls)
         self.assertFalse(player.attacking)
         self.tap(controls)
         player.update(0, controls)
         self.assertTrue(player.attacking)
 
-    def test_unarmed_and_unfocused_requests_are_not_delayed_until_pickup(self):
-        for focused in (True, False):
-            player, controls = Player(), Controls(focused=focused)
-            self.tap(controls)
-            player.update(0, controls)
-            self.assertFalse(player.attacking)
-            self.assertFalse(controls.attack_requested)
-            player.weapon = "dagger"
-            controls.focused = True
-            player.update(0, controls)
-            self.assertFalse(player.attacking)
+    def test_unarmed_a_uses_attack_sheet_then_returns_without_equipping_a_weapon(self):
+        player, controls = Player(), Controls()
+        self.tap(controls)
+        player.update(0, controls)
+        self.assertEqual((player.character_key, player.row, player.frame), ("armed_character", 3, 0))
+        self.assertIsNone(player.weapon)
+        player.update(ATTACK_DURATION, controls)
+        self.assertEqual((player.character_key, player.display_state), ("character", "IDLE"))
+        self.assertIsNone(player.weapon)
+
+    def test_unfocused_attack_does_not_queue(self):
+        player, controls = Player(), Controls(focused=False)
+        self.tap(controls)
+        player.update(0, controls)
+        self.assertFalse(player.attacking)
+        self.assertFalse(controls.attack_requested)
+        controls.focused = True
+        player.update(0, controls)
+        self.assertFalse(player.attacking)
 
     def test_attack_preserves_running_and_double_jump_physics(self):
         player = Player(weapon="steel_pipe")
         reference = Player(weapon="steel_pipe")
         controls, reference_controls = Controls(held={"right", "rshift"}), Controls(held={"right", "rshift"})
-        for key in ("space", "z"):
+        for key in ("space", "a"):
             self.tap(controls, key)
         self.tap(reference_controls, "space")
         player.update(0.1, controls)
@@ -119,11 +128,11 @@ class AttackTests(unittest.TestCase):
                 player = Player(x=ARROW_X[direction], weapon="dagger", attack_time=0.2)
                 if airborne:
                     player.foot_y, player.vertical_speed, player.state, player.jump_count = GROUND_Y + 100, 200, "JUMP", 1
-                controls = Controls(held={"z"}, attack_requested=True)
+                controls = Controls(held={"a"}, attack_requested=True)
                 self.assertTrue(Stage([], number=stage_number).try_transition(player, controls))
                 self.assertEqual((player.attack_time, player.row, player.frame), (0.2, 3, 3))
                 self.assertFalse(controls.attack_requested)
-                self.assertIn("z", controls.held)
+                self.assertIn("a", controls.held)
 
     def test_attack_and_jump_clip_to_the_correct_armed_sheet_rows(self):
         image = Mock(h=1280)
@@ -141,13 +150,21 @@ class AttackTests(unittest.TestCase):
     def test_attack_weapon_sweep_is_mirrored_and_stays_inside_screen(self):
         for weapon in ("dagger", "steel_pipe"):
             image = Mock(w=900, h=300)
-            images = {weapon: image}
+            images = {weapon: image, "right_hand": Mock(h=1280)}
             for frame in range(FRAME_COUNT):
                 centers = []
                 for facing in (-1, 1):
                     player = Player(weapon=weapon, attack_time=frame / ATTACK_FPS, facing=facing)
                     draw_held_weapon(images, player)
                     angle, flip, x, y, width, height = image.composite_draw.call_args.args
+                    grip_x, grip_y = WEAPON_GRIPS[weapon]
+                    local_x = (grip_x - 0.5) * width * (-1 if flip else 1)
+                    local_y = (grip_y - 0.5) * height
+                    hand_x, hand_y = WEAPON_HAND_OFFSETS["ATTACK"][frame]
+                    self.assertAlmostEqual(x + math.cos(angle) * local_x - math.sin(angle) * local_y,
+                                           player.x + facing * hand_x * CHARACTER_SCALE)
+                    self.assertAlmostEqual(y + math.sin(angle) * local_x + math.cos(angle) * local_y,
+                                           player.foot_y + hand_y * CHARACTER_SCALE)
                     centers.append((angle, x, y, flip))
                 self.assertAlmostEqual(centers[0][0], -centers[1][0])
                 self.assertAlmostEqual(centers[0][1] + centers[1][1], WIDTH)

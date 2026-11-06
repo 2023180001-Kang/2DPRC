@@ -13,7 +13,7 @@ class MovementTests(unittest.TestCase):
                 self.assertAlmostEqual(player.x, WIDTH / 2 + sign * WALK_SPEED)
 
     def test_running_speed_in_both_directions(self):
-        self.assertEqual(RUN_SPEED, 360.0 * 4)
+        self.assertEqual(RUN_SPEED, 360.0 * 2.5)
         for key, sign in (("left", -1), ("right", 1)):
             for shifts in ({"lshift"}, {"rshift"}, {"lshift", "rshift"}):
                 with self.subTest(key=key, shifts=shifts):

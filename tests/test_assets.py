@@ -14,6 +14,24 @@ from tools.prepare_character import prepare
 
 
 class AssetTests(unittest.TestCase):
+    def test_right_fist_overlay_covers_the_grip_without_copying_the_other_hand(self):
+        with (Image.open(ROOT / "assets/armed_character.png") as body,
+              Image.open(ROOT / "assets/armed_character_right_hand.png") as fists):
+            self.assertEqual(fists.size, body.size)
+            for state, row in ARMED_ANIMATION_ROWS.items():
+                for frame, (hand_x, hand_y) in enumerate(WEAPON_HAND_OFFSETS[state]):
+                    with self.subTest(state=state, frame=frame):
+                        anchor = (frame * 256 + 128 + hand_x, row * 256 + 244 - hand_y)
+                        self.assertEqual(fists.getpixel(anchor), body.getpixel(anchor))
+                        crop = fists.crop((frame * 256, row * 256, (frame + 1) * 256, (row + 1) * 256))
+                        left, top, right, bottom = crop.getbbox()
+                        self.assertLess(right - left, 32)
+                        self.assertLess(bottom - top, 32)
+            # In the right-facing neutral pose, the old left-hand grip is on
+            # the opposite side. Only the near-side right fist is extracted.
+            self.assertLess(WEAPON_HAND_OFFSETS["IDLE"][0][0], 0)
+            self.assertEqual(fists.getpixel((128 + 27, 244 - 68))[3], 0)
+
     def test_weapon_grips_are_on_visible_hands_in_every_new_pose(self):
         with Image.open(ROOT / "assets/armed_character.png") as sheet:
             for state, row in ARMED_ANIMATION_ROWS.items():
@@ -32,6 +50,8 @@ class AssetTests(unittest.TestCase):
             output = Path(directory) / "armed_character.png"
             prepare(source, output, rows=ARMED_FRAME_ROWS)
             self.assertEqual(output.read_bytes(), (ROOT / "assets/armed_character.png").read_bytes())
+            self.assertEqual(output.with_name("armed_character_right_hand.png").read_bytes(),
+                             (ROOT / "assets/armed_character_right_hand.png").read_bytes())
             with Image.open(source) as original, Image.open(output) as aligned:
                 self.assertEqual(aligned.size, (2048, 1280))
                 visible = original.getchannel("A").point(lambda value: value if value >= 128 else 0)

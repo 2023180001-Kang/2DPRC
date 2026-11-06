@@ -8,7 +8,7 @@ from settings import (
     ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_WIDTH, ARROW_X,
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
     HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
-    STAGE_ARROWS, WEAPON_ATTACK_ANGLES, WEAPON_HAND_OFFSETS, WIDTH,
+    STAGE_ARROWS, WEAPON_ATTACK_ANGLES, WEAPON_CARRY_ANGLE, WEAPON_GRIPS, WEAPON_HAND_OFFSETS, WIDTH,
 )
 
 
@@ -86,12 +86,19 @@ def draw_held_weapon(images, player):
     width = ITEM_WIDTHS[player.weapon]
     height = width * image.h / image.w
     hand_x, hand_y = WEAPON_HAND_OFFSETS[player.display_state][player.frame]
-    angle = radians(WEAPON_ATTACK_ANGLES[player.frame] if player.attacking else 0)
-    # Rotate about the hand's grip, rather than the image center. The pipe's
-    # handle is on its right in the source, opposite to the dagger's handle.
-    x = player.x + player.facing * (hand_x * CHARACTER_SCALE + cos(angle) * width * 0.3)
-    y = player.foot_y + hand_y * CHARACTER_SCALE + sin(angle) * width * 0.3
+    angle = radians(WEAPON_ATTACK_ANGLES[player.frame] if player.attacking else WEAPON_CARRY_ANGLE)
+    grip_x, grip_y = WEAPON_GRIPS[player.weapon]
+    if player.weapon == "steel_pipe":
+        grip_x = 1 - grip_x
+    # Rotate the center around the actual handle point, keeping the grip in
+    # the right fist even when the art's handle is off-center vertically.
+    dx, dy = (0.5 - grip_x) * width, (0.5 - grip_y) * height
+    x = player.x + player.facing * (hand_x * CHARACTER_SCALE + cos(angle) * dx - sin(angle) * dy)
+    y = player.foot_y + hand_y * CHARACTER_SCALE + sin(angle) * dx + cos(angle) * dy
     half_extent = (abs(cos(angle)) * width + abs(sin(angle)) * height) / 2
     x = max(half_extent, min(WIDTH - half_extent, x))
     flip = (player.facing < 0) != (player.weapon == "steel_pipe")
     image.composite_draw(angle * player.facing, "h" if flip else "", x, y, width, height)
+    # Only the extracted fist is redrawn: the blade remains in front of the
+    # body while the fingers cover the grip, rather than being hidden by it.
+    draw_character(images["right_hand"], player)

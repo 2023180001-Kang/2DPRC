@@ -13,6 +13,7 @@ IMAGE_FILES = {
     "second_background": "firstSecondmap.png",
     "arrow_left": "arrow_left_yellow.png", "arrow_right": "arrow_right_yellow.png",
     "armed_character": "assets/armed_character.png",
+    "right_hand": "assets/armed_character_right_hand.png",
 }
 
 

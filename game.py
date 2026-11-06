@@ -59,14 +59,14 @@ class Controls:
     attack_requested: bool = False
 
     def set_key(self, key, down):
-        if key not in {"left", "right", "lshift", "rshift", "space", "f", "z"}:
+        if key not in {"left", "right", "lshift", "rshift", "space", "f", "a"}:
             return
         if down and self.focused:
             if key == "space" and key not in self.held:
                 self.jump_requested = True
             if key == "f" and key not in self.held:
                 self.pickup_requested = True
-            if key == "z" and key not in self.held:
+            if key == "a" and key not in self.held:
                 self.attack_requested = True
             self.held.add(key)
         else:
@@ -152,13 +152,13 @@ class Player:
 
     @property
     def row(self):
-        if self.weapon is not None:
+        if self.weapon is not None or self.attacking:
             return ARMED_ANIMATION_ROWS[self.display_state]
         return ANIMATIONS[self.state][0]
 
     @property
     def attacking(self):
-        return self.weapon is not None and self.attack_time is not None
+        return self.attack_time is not None
 
     @property
     def display_state(self):
@@ -166,7 +166,7 @@ class Player:
 
     @property
     def character_key(self):
-        return "armed_character" if self.weapon is not None else "character"
+        return "armed_character" if self.weapon is not None or self.attacking else "character"
 
     def pickup_target(self, items):
         """Share the ground/range/nearest-item rule with the interaction hint."""
@@ -199,14 +199,12 @@ class Player:
         return True
 
     def update(self, dt, controls):
-        if self.weapon is None:
-            self.attack_time = None
         if self.attack_time is not None:
             self.attack_time += dt
             if self.attack_time >= ATTACK_DURATION - 1e-9:
                 self.attack_time = None
             # Requests made during an attack cannot queue or restart it.
-        elif controls.attack_requested and self.weapon is not None:
+        elif controls.attack_requested:
             self.attack_time = 0.0
         controls.attack_requested = False
 

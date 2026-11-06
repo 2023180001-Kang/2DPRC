@@ -4,14 +4,48 @@ import argparse
 from itertools import groupby
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from settings import (
-    ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE,
-    FRAME_BOTTOM_PADDING, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH,
+    ARMED_ANIMATION_ROWS, ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE,
+    FRAME_BOTTOM_PADDING, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH, WEAPON_HAND_OFFSETS,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def prepare_right_hand_overlay(sheet, output):
+    """Extract each right fist's skin and one-pixel edge for foreground grips."""
+    overlay = Image.new("RGBA", sheet.size)
+    for state, row in ARMED_ANIMATION_ROWS.items():
+        for column, (hand_x, hand_y) in enumerate(WEAPON_HAND_OFFSETS[state]):
+            origin_x, origin_y = column * FRAME_WIDTH, row * FRAME_HEIGHT
+            seed = (origin_x + FRAME_WIDTH // 2 + hand_x,
+                    origin_y + FRAME_HEIGHT - FRAME_BOTTOM_PADDING - hand_y)
+
+            def is_skin(point):
+                x, y = point
+                if not (origin_x <= x < origin_x + FRAME_WIDTH and origin_y <= y < origin_y + FRAME_HEIGHT):
+                    return False
+                r, g, b, a = sheet.getpixel(point)
+                return a >= 128 and r > 150 and r > g + 12 and g > b + 8
+
+            if not is_skin(seed):
+                raise ValueError(f"Right-hand anchor is not on the fist: {state} {column}")
+            seen, pending = {seed}, [seed]
+            while pending:
+                x, y = pending.pop()
+                for point in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                    if point not in seen and is_skin(point):
+                        seen.add(point)
+                        pending.append(point)
+            mask = Image.new("L", (FRAME_WIDTH, FRAME_HEIGHT))
+            for x, y in seen:
+                mask.putpixel((x - origin_x, y - origin_y), 255)
+            mask = mask.filter(ImageFilter.MaxFilter(3))
+            box = (origin_x, origin_y, origin_x + FRAME_WIDTH, origin_y + FRAME_HEIGHT)
+            overlay.paste(sheet.crop(box), (origin_x, origin_y), mask)
+    overlay.save(output)
 
 
 def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png", preview=False,
@@ -60,6 +94,8 @@ def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png"
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output)
+    if rows == ARMED_FRAME_ROWS:
+        prepare_right_hand_overlay(sheet, output.with_name(f"{output.stem}_right_hand.png"))
     print(f"Prepared {output}: {sheet.width}x{sheet.height}, cells {width}x{height}")
     if preview:
         preview_path = ROOT / f"artifacts/{output.stem}-preview.png"

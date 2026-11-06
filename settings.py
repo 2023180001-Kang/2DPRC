@@ -29,7 +29,7 @@ STAGE_ARROWS = {1: (1,), 2: (-1, 1)}
 STAGE_ENTRY_LEFT_X = 128.0
 STAGE_ENTRY_RIGHT_X = WIDTH - STAGE_ENTRY_LEFT_X
 WALK_SPEED = 180.0
-RUN_SPEED = WALK_SPEED * 8
+RUN_SPEED = WALK_SPEED * 5
 JUMP_SPEED = 480.0 * sqrt(2.0)
 GRAVITY = 1200.0
 JUMP_DURATION = 2 * JUMP_SPEED / GRAVITY
@@ -45,12 +45,16 @@ AIR_DROP_HEIGHT = 32.0
 PICKUP_RADIUS = 56.0
 PICKUP_HINT_SIZE = 22  # Layout area keeps the F at its original position without a keycap.
 PICKUP_HINT_GAP = 10
-# Hand offsets in source pixels from the centered character's feet, before facing flip.
+# Right-hand offsets from the centered character's feet, before facing flip.
+# In the right-facing sheet, the near-side right fist is normally left of the body.
 WEAPON_HAND_OFFSETS = {
-    "IDLE": ((27, 68), (27, 71), (36, 91), (37, 103), (36, 109), (27, 68), (28, 68), (28, 68)),
+    "IDLE": ((-25, 61), (-28, 65), (-25, 90), (-25, 103), (-24, 110), (-25, 61), (-24, 60), (-26, 60)),
     "WALK": ((-15, 77), (-16, 75), (0, 77), (5, 81), (-4, 77), (-4, 78), (-35, 75), (-28, 78)),
-    "RUN": ((23, 90), (21, 89), (-52, 83), (45, 91), (33, 86), (24, 88), (22, 85), (23, 90)),
+    "RUN": ((-23, 77), (-20, 80), (-52, 83), (-45, 92), (-45, 86), (-36, 84), (-31, 74), (-24, 78)),
     "ATTACK": ((16, 71), (-11, 79), (48, 103), (68, 126), (74, 108), (35, 93), (9, 76), (15, 70)),
-    "JUMP": ((18, 68), (-48, 73), (-52, 87), (41, 101), (30, 69), (-40, 67), (7, 46), (9, 48)),
+    "JUMP": ((18, 68), (-48, 73), (-52, 87), (-47, 81), (-52, 74), (-40, 67), (7, 46), (9, 48)),
 }
-WEAPON_ATTACK_ANGLES = (65, 100, 35, 0, -25, -45, 25, 65)
+WEAPON_CARRY_ANGLE = 90
+WEAPON_ATTACK_ANGLES = (90, 120, 65, 20, -10, 40, 75, 90)
+# Grip coordinates in the original item's image, normalized from bottom-left.
+WEAPON_GRIPS = {"dagger": (0.20, 0.50), "steel_pipe": (0.90, 0.35)}

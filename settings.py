@@ -16,7 +16,7 @@ ATTACK_DURATION = FRAME_COUNT / ATTACK_FPS
 FRAME_BOTTOM_PADDING = 12
 CHARACTER_SCALE = 0.6
 PLAYER_HALF_WIDTH = FRAME_WIDTH * CHARACTER_SCALE / 2
-# Feet rest on the sidewalk just above the curb in newfirststage.png at 720p.
+# Feet rest on the chapter maps' sidewalk just above the curb at 720p.
 GROUND_Y = 140
 ARROW_WIDTH = 80
 ARROW_X = {-1: 16 + ARROW_WIDTH / 2, 1: WIDTH - 16 - ARROW_WIDTH / 2}

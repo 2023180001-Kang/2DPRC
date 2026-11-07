@@ -1,4 +1,4 @@
-"""Verify live-enemy blocking and corpse platforms with actual SDL controls."""
+"""Verify contact idle, double-jump clearance and corpse platforms via SDL."""
 
 import json
 from unittest.mock import patch
@@ -48,15 +48,32 @@ def verify(output):
         if phase == "approach" and player.x >= left - 1e-7:
             change("push_live", "live-contact")
         elif phase == "push_live" and tick - phase_tick >= 15:
+            assert player.display_state == "IDLE"
             keys(down=("space",))
             change("jump_live")
         elif phase == "jump_live":
             keys(up=("space",))
-            assert player.x <= left + 1e-7
-            if player.foot_y > GROUND_Y + 150 and "live-jump-blocked" not in checkpoints:
-                change("land_live", "live-jump-blocked")
-        elif phase == "land_live":
-            assert player.x <= left + 1e-7
+            if tick - phase_tick == 20:
+                keys(down=("space",))
+                change("double_live", "live-double-jump")
+        elif phase == "double_live":
+            keys(up=("space",))
+            assert player.jump_count == 2
+            if player.x > right + 20:
+                assert enemy.state == "IDLE" and stage.visible_arrows == ()
+                keys(down=("left",), up=("right", "lshift"))
+                change("brake_live", "live-jump-cleared")
+        elif phase == "brake_live" and player.horizontal_speed <= 0:
+            keys(up=("left",))
+            change("land_live")
+        elif phase == "land_live" and player.grounded:
+            assert player.x > right
+            keys(down=("left", "lshift"))
+            change("return_live", "live-beyond-landed")
+        elif phase == "return_live" and player.x <= right + 1e-7:
+            change("push_live_right", "live-right-contact")
+        elif phase == "push_live_right" and tick - phase_tick >= 15:
+            assert player.display_state == "IDLE"
             if player.grounded:
                 keys(down=("a",))
                 change("kill", "contact-attack")
@@ -65,42 +82,46 @@ def verify(output):
             if enemy.defeated:
                 change("push_corpse", "corpse-contact")
         elif phase == "push_corpse" and tick - phase_tick >= 20:
-            assert abs(player.x - left) < 1e-6
+            assert abs(player.x - right) < 1e-6 and player.display_state == "IDLE"
             keys(down=("space",))
             change("jump_on")
         elif phase == "jump_on":
             keys(up=("space",))
-            if player.x >= enemy.x - 5:
-                keys(down=("left",), up=("right", "lshift"))
+            if player.x <= enemy.x + 5:
+                keys(down=("right",), up=("left", "lshift"))
                 change("brake_above")
-        elif phase == "brake_above" and player.horizontal_speed <= 0:
-            keys(up=("left",))
+        elif phase == "brake_above" and player.horizontal_speed >= 0:
+            keys(up=("right",))
             change("land_on")
         elif phase == "land_on" and player.grounded:
             assert abs(player.foot_y - top) < 1e-6
             change("stand_on", "corpse-top-landing")
         elif phase == "stand_on" and tick - phase_tick >= 15:
             assert abs(player.foot_y - top) < 1e-6
-            keys(down=("right",))
+            keys(down=("left",))
             change("walk_off", "standing-on-corpse")
-        elif phase == "walk_off" and player.x >= right and not player.grounded:
+        elif phase == "walk_off" and player.x <= left and not player.grounded:
             change("fall_off", "walk-off-fall")
         elif phase == "fall_off" and player.grounded:
             assert player.foot_y == GROUND_Y
-            keys(down=("left", "lshift"), up=("right",))
-            change("return_right", "walk-off-landed")
-        elif phase == "return_right" and player.x <= right + 1e-7:
-            change("push_right", "corpse-right-contact")
-        elif phase == "push_right" and tick - phase_tick >= 15:
+            keys(down=("right", "lshift"), up=("left",))
+            change("return_left", "walk-off-landed")
+        elif phase == "return_left" and player.x >= left - 1e-7:
+            change("push_left", "corpse-left-contact")
+        elif phase == "push_left" and tick - phase_tick >= 15:
+            assert player.display_state == "IDLE"
             keys(down=("space",))
             change("jump_over")
         elif phase == "jump_over":
             keys(up=("space",))
-            if player.x < left - 20:
-                keys(up=("left", "lshift"))
-                change("land_beyond", "jump-over-corpse")
+            if player.x > right + 20:
+                keys(down=("left",), up=("right", "lshift"))
+                change("brake_beyond", "jump-over-corpse")
+        elif phase == "brake_beyond" and player.horizontal_speed <= 0:
+            keys(up=("left",))
+            change("land_beyond")
         elif phase == "land_beyond" and player.grounded:
-            assert player.x < left and player.foot_y == GROUND_Y
+            assert player.x > right and player.foot_y == GROUND_Y
             change("done", "beyond-corpse-landed")
         elif phase == "done" and tick - phase_tick >= 20:
             push("quit")
@@ -111,13 +132,16 @@ def verify(output):
         nonlocal pending_shot
         draw_health(image, current)
         left, _, right, top = enemy.collision_bounds
-        if not enemy.defeated:
-            assert current.x <= left - PLAYER_BODY_HALF_WIDTH + 1e-6
-        elif left - PLAYER_BODY_HALF_WIDTH + 1e-6 < current.x < right + PLAYER_BODY_HALF_WIDTH - 1e-6:
+        if left - PLAYER_BODY_HALF_WIDTH + 1e-6 < current.x < right + PLAYER_BODY_HALF_WIDTH - 1e-6:
             assert current.foot_y >= top - 1e-6
+        if phase in ("push_live", "push_live_right", "push_corpse", "push_left"):
+            assert current.grounded and current.horizontal_speed == 0 and current.display_state == "IDLE"
+        if phase == "kill" and current.attacking:
+            assert current.display_state == "ATTACK"
         assert current.health == 3
         records.append({"tick": tick, "phase": phase, "x": current.x, "foot_y": current.foot_y,
-                        "speed": current.horizontal_speed, "enemy": enemy.state, "support": current.support_y})
+                        "speed": current.horizontal_speed, "enemy": enemy.state, "support": current.support_y,
+                        "display_state": current.display_state, "jumps": current.jump_count})
         if pending_shot:
             filename = f"collision-{pending_shot}.png"
             capture(output / filename)
@@ -128,11 +152,12 @@ def verify(output):
           patch("main.poll_events", side_effect=feed), patch("main.perf_counter", side_effect=lambda: clock),
           patch("main.sleep"), patch("main.draw_health", side_effect=observe)):
         result = main.run(frame_limit=810)
-    assert phase == "done" and len(screenshots) == 11
+    assert phase == "done" and len(screenshots) == 14
     assert enemy.defeated and stage.visible_arrows == (1,)
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"frames": result["frames"], "fixed_dt": 1 / 60,
-            "live_enemy_blocking": "PASS", "contact_attack": "PASS", "corpse_sides": "PASS",
+            "live_enemy_blocking": "PASS", "live_double_jump_clearance": "PASS", "contact_idle": "PASS",
+            "contact_attack": "PASS", "corpse_sides": "PASS",
             "corpse_landing_and_standing": "PASS", "walk_off_fall": "PASS", "jump_over": "PASS",
             "corpse_top": GROUND_Y + CORPSE_HEIGHT, "screenshots": screenshots}
 

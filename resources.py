@@ -7,10 +7,10 @@ import sdl2
 
 ROOT = Path(__file__).resolve().parent
 IMAGE_FILES = {
-    "background": "newfirststage.png", "character": "assets/character.png",
+    "background": "chapter1-1 map.png", "character": "assets/character.png",
     "health_bar": "HoodMan_HP바_투명배경_pico2d.png",
     "dagger": "dagger_item_pico2d.png", "steel_pipe": "steel_pipe_item_pico2d.png",
-    "second_background": "firstSecondmap.png",
+    "second_background": "chapter1-2 map.png",
     "arrow_left": "arrow_left_yellow.png", "arrow_right": "arrow_right_yellow.png",
     "armed_character": "assets/armed_character.png",
     "right_hand": "assets/armed_character_right_hand.png",

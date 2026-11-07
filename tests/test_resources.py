@@ -43,12 +43,12 @@ class ResourceTests(unittest.TestCase):
 
         self.assertEqual(resources.ROOT, Path(resources.__file__).resolve().parent)
         self.assertEqual(resources.IMAGE_FILES, {
-            "background": "newfirststage.png",
+            "background": "chapter1-1 map.png",
             "character": "assets/character.png",
             "health_bar": "HoodMan_HP바_투명배경_pico2d.png",
             "dagger": "dagger_item_pico2d.png",
             "steel_pipe": "steel_pipe_item_pico2d.png",
-            "second_background": "firstSecondmap.png",
+            "second_background": "chapter1-2 map.png",
             "arrow_left": "arrow_left_yellow.png",
             "arrow_right": "arrow_right_yellow.png",
             "armed_character": "assets/armed_character.png",
@@ -83,7 +83,7 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "newfirststage.png"), str(caught.exception))
+        self.assertIn(str(self.root / "chapter1-1 map.png"), str(caught.exception))
         self.load_image.assert_not_called()
         self.destroy_texture.assert_not_called()
 
@@ -94,7 +94,7 @@ class ResourceTests(unittest.TestCase):
         with self.assertRaises(resources.ResourceError) as caught:
             resources.load_images(self.root)
 
-        self.assertIn(str(self.root / "newfirststage.png"), str(caught.exception))
+        self.assertIn(str(self.root / "chapter1-1 map.png"), str(caught.exception))
         self.assertIs(caught.exception.__cause__, error)
         self.destroy_texture.assert_not_called()
 
@@ -106,7 +106,7 @@ class ResourceTests(unittest.TestCase):
                 resources.load_images(self.root)
 
         self.assertIn(str(self.root / "assets/character.png"), str(caught.exception))
-        self.load_image.assert_called_once_with(str(self.root / "newfirststage.png"))
+        self.load_image.assert_called_once_with(str(self.root / "chapter1-1 map.png"))
         release.assert_called_once()
         self.assertEqual(release.call_args.args[0], {})
         self.assertIsNone(self.background.texture)
@@ -135,7 +135,7 @@ class ResourceTests(unittest.TestCase):
 
         self.assertIn(str(self.root / "HoodMan_HP바_투명배경_pico2d.png"), str(caught.exception))
         self.assertEqual(self.load_image.call_args_list, [
-            call(str(self.root / "newfirststage.png")),
+            call(str(self.root / "chapter1-1 map.png")),
             call(str(self.root / "assets/character.png")),
         ])
         self.assertEqual(self.destroy_texture.call_args_list, [

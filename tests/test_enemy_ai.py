@@ -144,14 +144,14 @@ class EnemyAITests(unittest.TestCase):
                     player.update(1 / fps, controls, enemy)
                     self.assertGreaterEqual(direction * (enemy.x - player.x),
                                             ENEMY_BODY_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH - 1e-7)
-                    self.assertEqual(player.health, 3)
+                    self.assertEqual(player.health, 100)
                 self.assertEqual(player.state, "IDLE")
 
     def test_contact_during_cooldown_has_no_passive_damage(self):
         enemy, player = Enemy(x=700, attack_cooldown=1000), Player(x=640)
         for _ in range(600):
             enemy.update(1 / 60, player)
-            self.assertEqual((enemy.state, enemy.row, player.health), ("IDLE", 0, 3))
+            self.assertEqual((enemy.state, enemy.row, player.health), ("IDLE", 0, 100))
 
     def test_only_current_map_chases_and_round_trip_preserves_enemy_state(self):
         first = Enemy(x=800, state="DEAD")

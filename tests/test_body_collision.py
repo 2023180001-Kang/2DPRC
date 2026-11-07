@@ -19,7 +19,7 @@ class BodyCollisionTests(unittest.TestCase):
                 self.assertEqual(player.x, 640 + side * (ENEMY_BODY_HALF_WIDTH + PLAYER_BODY_HALF_WIDTH))
                 self.assertEqual(player.horizontal_speed, 0)
                 self.assertEqual(player.display_state, "IDLE")
-            self.assertEqual((enemy.x, enemy.state, player.health), (640, "IDLE", 3))
+            self.assertEqual((enemy.x, enemy.state, player.health), (640, "IDLE", 100))
 
     def test_live_and_dying_enemies_can_be_cleared_above_their_actual_height(self):
         for state in ("IDLE", "DYING"):

@@ -9,10 +9,11 @@ import sdl2
 import main
 from events import poll_events
 from game import Enemy, Player, Stage
-from rendering import draw_health
+from rendering import camera_offset, draw_background, draw_health
 from resources import ROOT
 from settings import (
-    ENEMY_ATTACK_HIT_TIME, GROUND_Y, HEALTH_BAR_WIDTH, HEALTH_FILL_BOUNDS, HUD_MARGIN,
+    ENEMY_ATTACK_HIT_TIME, ENEMY_ATTACK_DAMAGE, HEALTH_BAR_WIDTH, HEALTH_FILL_BOUNDS,
+    HEIGHT, HUD_MARGIN, MAX_HEALTH,
 )
 from tools.verify_runtime import capture, push
 
@@ -29,6 +30,9 @@ def verify_case(output, label, facing=1, dodge=None, counter=False):
     zero_tick = None
     baseline_hud = None
     attack_x = attack_facing = None
+    pending_gauge = None
+    shake_samples = []
+    impact_tick = None
 
     def feed(controls):
         nonlocal tick, clock
@@ -70,7 +74,7 @@ def verify_case(output, label, facing=1, dodge=None, counter=False):
             for fraction in (1 / 6, 1 / 2, 5 / 6):
                 x = round(HUD_MARGIN + (left + (right - left) * fraction) * scale)
                 r, g, b = screen.getpixel((x, y))[:3]
-                if fraction < health / 3:
+                if fraction < health / MAX_HEALTH:
                     assert b > g + 15 and g > r + 15, (health, fraction, (r, g, b))
                 else:
                     assert (r, g, b) == (3, 7, 15), (health, fraction, (r, g, b))
@@ -84,10 +88,20 @@ def verify_case(output, label, facing=1, dodge=None, counter=False):
                 assert left * scale - 2 <= x1 and x2 <= right * scale + 2
                 assert top * scale - 2 <= y1 and y2 <= bottom * scale + 2
 
+    def observe_background(image, **kwargs):
+        assert kwargs.get("offset", (0, 0)) == camera_offset(player)
+        draw_background(image, **kwargs)
+
     def observe(image, current):
         nonlocal previous_health, previous_state, zero_tick, attack_x, attack_facing
-        draw_health(image, current)
-        assert 0 <= current.health <= 3
+        nonlocal pending_gauge, impact_tick
+        with patch.object(image, "draw", wraps=image.draw) as bar_draw:
+            draw_health(image, current)
+            bar_x, bar_y, _, bar_height = bar_draw.call_args.args
+        hud_offset = (bar_x - HUD_MARGIN - HEALTH_BAR_WIDTH / 2,
+                      bar_y - (HEIGHT - HUD_MARGIN - bar_height / 2))
+        shake_samples.append({"tick": tick, "camera": camera_offset(current), "hud": hud_offset})
+        assert 0 <= current.health <= MAX_HEALTH
         if enemy.state == "ATTACK":
             assert enemy.row == 2 and not stage.visible_arrows
             if previous_state != "ATTACK":
@@ -99,13 +113,24 @@ def verify_case(output, label, facing=1, dodge=None, counter=False):
                 screenshot(f"attack-frame-{enemy.frame}")
         if current.health != previous_health:
             if previous_health is not None:
-                assert previous_health - current.health == 1
+                assert previous_health - current.health == ENEMY_ATTACK_DAMAGE
                 assert enemy.attack_hit and tick - attacks[-1] >= round(ENEMY_ATTACK_HIT_TIME * 60)
+                assert camera_offset(current) == (6, 0)
+                assert hud_offset == (3, 0)
+                impact_tick = tick
+                if current.health == 70:
+                    assert not current.incapacitated and current.state not in ("DYING", "DEAD")
             health_changes.append({"tick": tick, "health": current.health})
-            verify_gauge(screenshot(f"hp-{current.health}"), current.health)
+            screenshot(f"hp-{current.health}-impact")
+            pending_gauge = current.health
             previous_health = current.health
             if current.health == 0:
                 zero_tick = tick
+        if pending_gauge is not None and current.hit_feedback_time <= 1e-9:
+            verify_gauge(screenshot(f"hp-{pending_gauge}"), pending_gauge)
+            pending_gauge = None
+        if impact_tick is not None and tick - impact_tick == 4 and len(health_changes) == 2:
+            screenshot("shake-recoil")
         if counter and enemy.state != previous_state and enemy.state in ("DYING", "DEAD"):
             screenshot(enemy.state.lower())
         previous_state = enemy.state
@@ -113,21 +138,27 @@ def verify_case(output, label, facing=1, dodge=None, counter=False):
     with (patch("main.Player", return_value=player), patch("main.Stage", return_value=stage),
           patch("main.poll_events", side_effect=feed),
           patch("main.perf_counter", side_effect=lambda: clock), patch("main.sleep"),
+          patch("main.draw_background", side_effect=observe_background),
           patch("main.draw_health", side_effect=observe)):
-        result = main.run(frame_limit=600)
+        result = main.run(frame_limit=1000)
     if dodge:
-        assert player.health == 3 and enemy.attack_hit
+        assert player.health == MAX_HEALTH and enemy.attack_hit
         assert len(attacks) == 1 and poses == set(range(8))
     elif counter:
-        assert player.health == 3 and enemy.defeated and stage.visible_arrows == (1,)
+        assert player.health == MAX_HEALTH and enemy.defeated and stage.visible_arrows == (1,)
     else:
-        assert [record["health"] for record in health_changes] == [3, 2, 1, 0]
-        assert len(attacks) == 3 and poses == set(range(8))
+        assert [record["health"] for record in health_changes] == list(range(100, -1, -10))
+        assert len(attacks) == 10 and poses == set(range(8))
         assert all(b - a >= 76 for a, b in zip(attacks, attacks[1:]))
+        assert any(sample["camera"][0] < 0 for sample in shake_samples)
+        assert any(sample["hud"][0] < 0 for sample in shake_samples)
+    assert shake_samples[-1]["camera"] == (0, 0)
+    assert shake_samples[-1]["hud"] == (0, 0)
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"case": label, "frames": result["frames"], "status": "PASS",
             "health_changes": health_changes, "attack_start_ticks": attacks,
-            "screenshots": shots, "gauge_pixels_and_portrait_frame": "PASS"}
+            "screenshots": shots, "gauge_pixels_and_portrait_frame": "PASS",
+            "camera_and_hud_shake": "PASS", "shake_samples": shake_samples}
 
 
 if __name__ == "__main__":
@@ -138,4 +169,6 @@ if __name__ == "__main__":
     cases.append(verify_case(output, "counterattack", counter=True))
     result = {"fixed_dt": 1 / 60, "cases": cases}
     (output / "enemy-combat-runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(json.dumps(result, indent=2))
+    print(json.dumps({"fixed_dt": result["fixed_dt"],
+                      "cases": [{key: value for key, value in case.items() if key != "shake_samples"}
+                                for case in cases]}, indent=2))

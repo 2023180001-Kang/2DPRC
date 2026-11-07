@@ -56,7 +56,7 @@ def verify_case(output, weapon, direction, contact):
 
     def observe(image, current):
         draw_health(image, current)
-        assert current.health == 3 and stage.number == 1
+        assert current.health == 100 and stage.number == 1
         checkpoint = None
         if enemy.state == "DYING" and hit_tick is None:
             checkpoint = "hit"

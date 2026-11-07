@@ -5,7 +5,7 @@ from unittest.mock import patch
 from game import Controls, Enemy, Item, Player, Stage
 from settings import (
     ARROW_X, GRAVITY, GROUND_Y, JUMP_DURATION, JUMP_SPEED,
-    STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X,
+    STAGE_BACKGROUNDS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X,
 )
 
 
@@ -64,8 +64,8 @@ class AirStageTransitionTests(unittest.TestCase):
                     player.update(0, controls)
                     self.assertEqual((player.state, player.jump_count), ("JUMP", 1))
 
-    def test_second_stage_inactive_right_arrow_leaves_airborne_state_and_requests_untouched(self):
-        stage = Stage(items=[Item("dagger", 500)], number=2)
+    def test_final_stage_inactive_right_arrow_leaves_airborne_state_and_requests_untouched(self):
+        stage = Stage(items=[Item("dagger", 500)], number=max(STAGE_BACKGROUNDS))
         player = Player(x=ARROW_X[1], foot_y=GROUND_Y + 200, vertical_speed=-100,
                         state="JUMP", jump_count=2, animation_time=0.6, weapon="steel_pipe", health=2)
         controls = Controls(held={"right", "rshift", "space"},
@@ -77,7 +77,7 @@ class AirStageTransitionTests(unittest.TestCase):
             for _ in range(3):
                 self.assertFalse(stage.try_transition(player, controls))
             spawn.assert_not_called()
-        self.assertEqual(stage.number, 2)
+        self.assertEqual(stage.number, max(STAGE_BACKGROUNDS))
         self.assertEqual(stage.items, before_items)
         self.assertEqual(vars(player), before_player)
         self.assertEqual(vars(controls), before_controls)

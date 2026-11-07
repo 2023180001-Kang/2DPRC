@@ -19,9 +19,12 @@ from settings import (
     ENEMY_SCALE, ENEMY_STOP_DISTANCE, FRAME_WIDTH,
     ENEMY_ATTACK_START_RANGE, ENEMY_ATTACK_RANGE, ENEMY_ATTACK_HEIGHT_RANGE,
     ENEMY_ATTACK_FPS, ENEMY_ATTACK_DURATION, ENEMY_ATTACK_HIT_TIME, ENEMY_ATTACK_COOLDOWN,
-    PLAYER_HURT_INVULNERABILITY,
+    PLAYER_HURT_INVULNERABILITY, ENEMY_ATTACK_DAMAGE,
+    CAMERA_SHAKE_DURATION, HEALTH_SHAKE_DURATION,
     POST_KILL_TURN_DURATION,
     PLAYER_DEATH_FPS, PLAYER_DEATH_FRAMES, PLAYER_DEATH_ROW,
+    PLAYER_DEATH_KNOCKBACK_DISTANCE, PLAYER_DEATH_KNOCKBACK_DURATION, PLAYER_DEATH_CLEARANCE,
+    STAGE_GROUND_Y,
 )
 
 
@@ -32,14 +35,15 @@ class Item:
     foot_y: float = GROUND_Y
     vertical_speed: float = 0.0
     falling: bool = False
+    ground_y: float = GROUND_Y
 
     def update(self, dt):
         if not self.falling:
             return self
         y = self.foot_y + self.vertical_speed * dt - 0.5 * GRAVITY * dt * dt
         speed = self.vertical_speed - GRAVITY * dt
-        if y <= GROUND_Y + 1e-9:
-            return replace(self, foot_y=GROUND_Y, vertical_speed=0.0, falling=False)
+        if y <= self.ground_y + 1e-9:
+            return replace(self, foot_y=self.ground_y, vertical_speed=0.0, falling=False)
         return replace(self, foot_y=y, vertical_speed=speed)
 
 
@@ -59,7 +63,8 @@ def spawn_items(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
              and all(abs(x - ARROW_X[direction]) > arrow_clearance
                      for direction in STAGE_ARROWS[stage_number])]
     positions = rng.sample(slots, count)
-    return [Item(kind, x + rng.uniform(-jitter, jitter))
+    ground_y = STAGE_GROUND_Y[stage_number]
+    return [Item(kind, x + rng.uniform(-jitter, jitter), foot_y=ground_y, ground_y=ground_y)
             for kind, x in zip(kinds, positions)]
 
 
@@ -166,12 +171,31 @@ class Enemy:
                 distance = self.facing * (player.x - self.x)
                 if (0 <= distance <= ENEMY_ATTACK_RANGE
                         and abs(player.foot_y - self.foot_y) <= ENEMY_ATTACK_HEIGHT_RANGE):
-                    player.take_damage(source_x=self.x)
+                    player.take_damage(ENEMY_ATTACK_DAMAGE, source_x=self.x)
         if self.animation_time >= ENEMY_ATTACK_DURATION - 1e-9:
             self.state, self.animation_time = "IDLE", 0.0
             self.attack_cooldown = ENEMY_ATTACK_COOLDOWN
 
     def update(self, dt, player=None):
+        if self.alive and player is not None and player.incapacitated:
+            # Stop pursuing the body. Back away if knockback is blocked by a
+            # screen edge, reserving space for the entire falling sprite.
+            # Retreat without turning away from the last attack's direction.
+            dx = self.x - player.x
+            direction = (1 if dx > 0 else -1) if dx else player.facing
+            remaining = max(0.0, PLAYER_DEATH_CLEARANCE - abs(dx))
+            speed = PLAYER_DEATH_KNOCKBACK_DISTANCE / PLAYER_DEATH_KNOCKBACK_DURATION
+            half_width = FRAME_WIDTH * ENEMY_SCALE / 2
+            old_x = self.x
+            self.x = max(half_width, min(WIDTH - half_width, self.x + direction * min(speed * dt, remaining)))
+            next_state = "CHASE" if abs(self.x - old_x) > 1e-9 else "IDLE"
+            fps = ENEMY_CHASE_FPS if next_state == "CHASE" else ENEMY_IDLE_FPS
+            self.animation_time = ((self.animation_time + dt) % (FRAME_COUNT / fps)
+                                   if self.state == next_state else 0.0)
+            self.state, self.aware = next_state, False
+            self.attack_hit = True
+            self.attack_cooldown = ENEMY_ATTACK_COOLDOWN
+            return
         if self.state == "ATTACK":
             self._update_attack(dt, player)
             return
@@ -220,7 +244,7 @@ def spawn_enemy(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
                  and all(abs(x - ARROW_X[direction]) > clearance
                          for direction in STAGE_ARROWS[stage_number])]
     x = rng.choice(positions)
-    return Enemy(x=x, facing=-1 if x > spawn_x else 1)
+    return Enemy(x=x, foot_y=STAGE_GROUND_Y[stage_number], facing=-1 if x > spawn_x else 1)
 
 
 def _integrate_speed(speed, target, acceleration, dt):
@@ -278,6 +302,10 @@ class Stage:
         return STAGE_BACKGROUNDS[self.number]
 
     @property
+    def ground_y(self):
+        return STAGE_GROUND_Y[self.number]
+
+    @property
     def visible_arrows(self):
         return tuple(direction for direction in STAGE_ARROWS[self.number]
                      if direction < 0 or self.enemy.defeated)
@@ -290,6 +318,7 @@ class Stage:
         for index, item in enumerate(self.items):
             self.items[index] = item.update(dt)
         if player is not None:
+            player.set_ground_y(self.ground_y)
             player.update_damage(dt)
         self.enemy.update(dt, player)
 
@@ -312,16 +341,17 @@ class Stage:
         self.items = self._items_by_stage[destination]
         self.enemy = self._enemies_by_stage[destination]
         player.x = entry_x
-        player.support_y = GROUND_Y
+        player.set_ground_y(self.ground_y)
+        player.support_y = self.ground_y
         # A fast step may reach the screen clamp and the exit together. Keep
         # that step's momentum when it is a valid transition, not a wall stop.
         if player.boundary_speed:
             player.horizontal_speed = player.boundary_speed
             player.boundary_speed = 0.0
         controls.jump_requested = controls.pickup_requested = controls.attack_requested = False
-        # Airborne transitions move only x; preserve the entire ongoing jump.
+        # Preserve airborne height relative to each map's ground and the jump.
         if was_grounded:
-            player.foot_y = GROUND_Y
+            player.foot_y = self.ground_y
             player.vertical_speed = 0.0
             player.jump_count = 0
             player.state = "IDLE"
@@ -348,11 +378,21 @@ class Player:
     boundary_speed: float = 0.0
     support_y: float = GROUND_Y
     hurt_time: float = 0.0
+    hit_feedback_time: float = 0.0
     death_kind: str = "BACKWARD"
     death_time: float = 0.0
     attack_momentum: float = 0.0
     kill_turn_momentum: float = 0.0
     kill_turn_time: float = 0.0
+    ground_y: float = GROUND_Y
+    death_knockback_direction: int = 0
+
+    def set_ground_y(self, ground_y):
+        """Rebase world height while keeping the current height above ground."""
+        offset = ground_y - self.ground_y
+        self.foot_y += offset
+        self.support_y += offset
+        self.ground_y = ground_y
 
     @property
     def incapacitated(self):
@@ -368,17 +408,26 @@ class Player:
         self.state, self.death_time = "DYING", 0.0
         self.attack_time = None
         self.horizontal_speed = self.boundary_speed = 0.0
+        self.death_knockback_direction = (
+            (1 if self.x > source_x else -1) if source_x is not None and source_x != self.x
+            else -self.facing)
         self.vertical_speed = min(0.0, self.vertical_speed)
-        self.support_y = GROUND_Y
+        self.support_y = self.ground_y
 
     def _update_death(self, dt):
-        if self.foot_y > GROUND_Y:
+        # Integrate the ease-out displacement exactly across any frame partition.
+        before = min(self.death_time / PLAYER_DEATH_KNOCKBACK_DURATION, 1.0)
+        after = min((self.death_time + dt) / PLAYER_DEATH_KNOCKBACK_DURATION, 1.0)
+        distance = PLAYER_DEATH_KNOCKBACK_DISTANCE * ((1 - before) ** 2 - (1 - after) ** 2)
+        self.x = max(PLAYER_HALF_WIDTH, min(WIDTH - PLAYER_HALF_WIDTH,
+                     self.x + self.death_knockback_direction * distance))
+        if self.foot_y > self.ground_y:
             self.foot_y += self.vertical_speed * dt - 0.5 * GRAVITY * dt * dt
             self.vertical_speed -= GRAVITY * dt
-        if self.foot_y <= GROUND_Y:
-            self.foot_y, self.vertical_speed = GROUND_Y, 0.0
+        if self.foot_y <= self.ground_y:
+            self.foot_y, self.vertical_speed = self.ground_y, 0.0
         self.death_time = min(self.death_time + dt, self.death_duration)
-        if self.death_time >= self.death_duration - 1e-9 and self.foot_y == GROUND_Y:
+        if self.death_time >= self.death_duration - 1e-9 and self.foot_y == self.ground_y:
             self.death_time, self.state = self.death_duration, "DEAD"
 
     def take_damage(self, amount=1, *, source_x=None):
@@ -386,12 +435,14 @@ class Player:
             return False
         self.health = max(0, self.health - amount)
         self.hurt_time = PLAYER_HURT_INVULNERABILITY
+        self.hit_feedback_time = max(CAMERA_SHAKE_DURATION, HEALTH_SHAKE_DURATION)
         if self.incapacitated:
             self._start_death(source_x)
         return True
 
     def update_damage(self, dt):
         self.hurt_time = max(0.0, self.hurt_time - dt)
+        self.hit_feedback_time = max(0.0, self.hit_feedback_time - dt)
 
     @property
     def grounded(self):
@@ -456,9 +507,10 @@ class Player:
         self.attack_time = None
         if previous is not None:
             if self.grounded:
-                items.append(Item(previous, self.x))
+                items.append(Item(previous, self.x, foot_y=self.ground_y, ground_y=self.ground_y))
             else:
-                items.append(Item(previous, self.x, self.foot_y + AIR_DROP_HEIGHT, falling=True))
+                items.append(Item(previous, self.x, self.foot_y + AIR_DROP_HEIGHT,
+                                  falling=True, ground_y=self.ground_y))
         return True
 
     def move_horizontally(self, dt, controls, air_time=0.0):
@@ -508,9 +560,9 @@ class Player:
         left, _, right, top = obstacle.collision_bounds
         on_top = (left - PLAYER_BODY_HALF_WIDTH < self.x < right + PLAYER_BODY_HALF_WIDTH
                   and abs(self.foot_y - top) <= 1e-7 and self.vertical_speed == 0)
-        was_supported = self.grounded and self.support_y > GROUND_Y
-        self.support_y = top if on_top else GROUND_Y
-        if was_supported and not on_top and self.foot_y > GROUND_Y:
+        was_supported = self.grounded and self.support_y > self.ground_y
+        self.support_y = top if on_top else self.ground_y
+        if was_supported and not on_top and self.foot_y > self.ground_y:
             self.jump_count = max(1, self.jump_count)
 
     def _resolve_enemy_collision(self, obstacle, old_x, old_y, direction):
@@ -544,11 +596,11 @@ class Player:
             blocked = False
         if blocked:
             self.horizontal_speed = self.boundary_speed = 0.0
-        if self.support_y > GROUND_Y and not (
+        if self.support_y > self.ground_y and not (
                 left < self.x < right and abs(self.foot_y - top) <= 1e-7
                 and self.vertical_speed == 0):
             was_grounded = self.grounded
-            self.support_y = GROUND_Y
+            self.support_y = self.ground_y
             if was_grounded:
                 self.jump_count = max(1, self.jump_count)
         return landed, blocked

@@ -16,7 +16,7 @@ class HealthTests(unittest.TestCase):
 
     def test_initial_health_draws_one_full_hp_bar_without_hearts(self):
         player = Player()
-        self.assertEqual(player.health, 3)
+        self.assertEqual(player.health, 100)
         self.assertEqual(IMAGE_FILES["health_bar"], "HoodMan_HP바_투명배경_pico2d.png")
         self.assertNotIn("hp_preview_100.png", IMAGE_FILES.values())
         self.assertNotIn("Heart.png", IMAGE_FILES.values())
@@ -47,18 +47,18 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.image.draw.call_args, expected)
 
     def test_depleted_gauge_matches_health_and_preserves_portrait_and_border(self):
-        for health in (3, 2, 1, 0):
+        for health in (100, 90, 70, 50, 10, 0):
             with self.subTest(health=health), patch("rendering.draw_rectangle") as rectangle:
                 self.image.reset_mock()
                 draw_health(self.image, Player(health=health))
                 self.image.draw.assert_called_once()
-                if health == 3:
+                if health == 100:
                     rectangle.assert_not_called()
                     continue
                 left, top, right, bottom = HEALTH_FILL_BOUNDS
                 scale = HEALTH_BAR_WIDTH / self.image.w
                 x1, y1, x2, y2, *color = rectangle.call_args.args
-                self.assertAlmostEqual(x1, HUD_MARGIN + (left + (right - left) * health / 3) * scale)
+                self.assertAlmostEqual(x1, HUD_MARGIN + (left + (right - left) * health / 100) * scale)
                 self.assertAlmostEqual(x2, HUD_MARGIN + right * scale)
                 self.assertAlmostEqual(y1, HEIGHT - HUD_MARGIN - bottom * scale)
                 self.assertAlmostEqual(y2, HEIGHT - HUD_MARGIN - top * scale)
@@ -73,5 +73,5 @@ class HealthTests(unittest.TestCase):
             draw_health(self.image, Player(health=0))
             self.assertEqual(rectangle.call_args, empty)
             rectangle.reset_mock()
-            draw_health(self.image, Player(health=10))
+            draw_health(self.image, Player(health=110))
             rectangle.assert_not_called()

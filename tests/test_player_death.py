@@ -12,6 +12,8 @@ from resources import ROOT
 from settings import (
     ARROW_X, CHARACTER_SOURCE, ENEMY_ATTACK_HIT_TIME, FRAME_BOTTOM_PADDING,
     GROUND_Y, PLAYER_DEATH_FPS, PLAYER_DEATH_FRAMES,
+    PLAYER_DEATH_KNOCKBACK_DISTANCE, PLAYER_DEATH_KNOCKBACK_DURATION,
+    PLAYER_DEATH_CLEARANCE, PLAYER_HALF_WIDTH, WIDTH,
 )
 from tools.prepare_character import prepare
 
@@ -68,9 +70,9 @@ class PlayerDeathTests(unittest.TestCase):
         player = Player(x=640, horizontal_speed=900, state="RUN", weapon="dagger", attack_time=0.2)
         player.take_damage(source_x=576)
         self.assertEqual((player.health, player.state, player.horizontal_speed, player.attack_time),
-                         (2, "RUN", 900, 0.2))
+                         (99, "RUN", 900, 0.2))
         self.assertFalse(player.take_damage(10, source_x=704))
-        self.assertEqual(player.health, 2)
+        self.assertEqual(player.health, 99)
 
     def test_each_clip_plays_only_its_frames_then_holds_its_own_last_frame(self):
         for front, expected in ((True, (0, 1, 2, 3, 4)), (False, (5, 6, 7))):
@@ -89,6 +91,60 @@ class PlayerDeathTests(unittest.TestCase):
                 for _ in range(steps):
                     player.update(1 / steps, Controls())
                 self.assertEqual((player.state, player.frame, player.health), ("DEAD", frame, 0))
+                self.assertAlmostEqual(player.x, 640 + (-1 if front else 1) * PLAYER_DEATH_KNOCKBACK_DISTANCE)
+
+    def test_lethal_knockback_moves_away_from_attacker_for_both_clips_and_facings(self):
+        for facing in (-1, 1):
+            for front in (True, False):
+                player = self.lethal(facing, front)
+                direction = facing * (-1 if front else 1)
+                player.update(PLAYER_DEATH_KNOCKBACK_DURATION / 2, Controls())
+                self.assertAlmostEqual(player.x, 640 + direction * PLAYER_DEATH_KNOCKBACK_DISTANCE * 0.75)
+                player.update(PLAYER_DEATH_KNOCKBACK_DURATION / 2, Controls(focused=False))
+                self.assertAlmostEqual(player.x, 640 + direction * PLAYER_DEATH_KNOCKBACK_DISTANCE)
+                x = player.x
+                player.update(10, Controls())
+                self.assertEqual(player.x, x)
+
+    def test_knockback_distance_at_partial_time_is_independent_of_frame_partition(self):
+        for steps in (1, 2, 30, 60, 144):
+            player = self.lethal()
+            for _ in range(steps):
+                player.update(0.2 / steps, Controls())
+            self.assertAlmostEqual(player.x, 640 - PLAYER_DEATH_KNOCKBACK_DISTANCE * (1 - (1 / 3) ** 2))
+
+    def test_enemy_clears_body_at_both_screen_edges_and_never_follows_it_back(self):
+        for edge, side in ((PLAYER_HALF_WIDTH, 1), (WIDTH - PLAYER_HALF_WIDTH, -1)):
+            for facing in (-1, 1):
+                player = Player(x=edge, facing=facing, health=1)
+                enemy = Enemy(x=edge + side * 56)
+                stage = Stage([], enemy=enemy)
+                stage.update(0, player)
+                stage.update(ENEMY_ATTACK_HIT_TIME, player)
+                for _ in range(60):
+                    stage.update(1 / 60, player)
+                    self.assertEqual(enemy.facing, -side)
+                    player.update(1 / 60, Controls({"right", "lshift"}), enemy)
+                    self.assertGreaterEqual(player.x, PLAYER_HALF_WIDTH)
+                    self.assertLessEqual(player.x, WIDTH - PLAYER_HALF_WIDTH)
+                    if player.state == "DEAD":
+                        self.assertGreaterEqual(abs(player.x - enemy.x), PLAYER_DEATH_CLEARANCE - 1e-7)
+                self.assertEqual((player.x, player.state, enemy.state, enemy.aware), (edge, "DEAD", "IDLE", False))
+
+    def test_enemy_stops_at_clearance_after_lethal_knockback_in_open_space(self):
+        for side in (-1, 1):
+            player = Player(x=640, health=1)
+            enemy = Enemy(x=640 + side * 56)
+            stage = Stage([], enemy=enemy)
+            stage.update(0, player)
+            stage.update(ENEMY_ATTACK_HIT_TIME, player)
+            for _ in range(120):
+                stage.update(1 / 60, player)
+                self.assertEqual(enemy.facing, -side)
+                player.update(1 / 60, Controls(), enemy)
+            self.assertAlmostEqual(player.x, 640 - side * PLAYER_DEATH_KNOCKBACK_DISTANCE)
+            self.assertGreaterEqual(abs(player.x - enemy.x), PLAYER_DEATH_CLEARANCE)
+            self.assertEqual((player.state, enemy.state), ("DEAD", "IDLE"))
 
     def test_death_cancels_attack_horizontal_speed_and_ignores_movement_actions(self):
         for weapon in (None, "dagger", "steel_pipe"):
@@ -98,7 +154,8 @@ class PlayerDeathTests(unittest.TestCase):
                                 jump_requested=True, attack_requested=True, pickup_requested=True)
             for _ in range(60):
                 player.update(1 / 60, controls, enemy)
-            self.assertEqual((player.x, player.facing, player.horizontal_speed, player.state), (640, 1, 0, "DEAD"))
+            self.assertEqual((player.x, player.facing, player.horizontal_speed, player.state),
+                             (640 - PLAYER_DEATH_KNOCKBACK_DISTANCE, 1, 0, "DEAD"))
             self.assertFalse(player.attacking)
             self.assertFalse(controls.jump_requested or controls.attack_requested or controls.pickup_requested)
             self.assertEqual(enemy.state, "IDLE")
@@ -111,15 +168,16 @@ class PlayerDeathTests(unittest.TestCase):
         self.assertEqual((player.frame, player.state), (7, "DYING"))
         self.assertGreater(player.foot_y, GROUND_Y)
         player.update(1, Controls())
-        self.assertEqual((player.x, player.foot_y, player.vertical_speed, player.state), (640, GROUND_Y, 0, "DEAD"))
+        self.assertEqual((player.x, player.foot_y, player.vertical_speed, player.state),
+                         (640 + PLAYER_DEATH_KNOCKBACK_DISTANCE, GROUND_Y, 0, "DEAD"))
 
     def test_rehits_and_focus_changes_do_not_restart_or_redirect_death(self):
         player = self.lethal(front=False)
         player.update(0.2, Controls())
-        before = (player.death_kind, player.death_time, player.facing)
+        before = (player.death_kind, player.death_time, player.facing, player.death_knockback_direction, player.x)
         self.assertFalse(player.take_damage(source_x=704))
         player.update(0, Controls(focused=False))
-        self.assertEqual((player.death_kind, player.death_time, player.facing), before)
+        self.assertEqual((player.death_kind, player.death_time, player.facing, player.death_knockback_direction, player.x), before)
 
     def test_dead_player_cannot_pick_up_swap_drop_or_show_f_hint(self):
         for weapon in (None, "dagger", "steel_pipe"):
@@ -154,4 +212,5 @@ class PlayerDeathTests(unittest.TestCase):
     def test_zero_health_fixture_starts_death_on_first_update(self):
         player = Player(health=0, weapon="dagger", horizontal_speed=900)
         player.update(1, Controls({"right", "lshift"}))
-        self.assertEqual((player.state, player.x, player.horizontal_speed, player.frame), ("DEAD", 640, 0, 4))
+        self.assertEqual((player.state, player.x, player.horizontal_speed, player.frame),
+                         ("DEAD", 640 - PLAYER_DEATH_KNOCKBACK_DISTANCE, 0, 4))

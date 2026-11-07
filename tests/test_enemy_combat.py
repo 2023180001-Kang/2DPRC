@@ -21,14 +21,14 @@ class EnemyCombatTests(unittest.TestCase):
                     self.assertEqual(enemy.state == "ATTACK", attacks)
                     if attacks:
                         self.assertEqual((enemy.facing, enemy.frame, enemy.row), (direction, 0, 2))
-                    self.assertEqual(player.health, 3)
+                    self.assertEqual(player.health, 100)
 
     def test_attack_plays_eight_frames_and_hits_only_at_fifth_frame(self):
         enemy, player = Enemy(x=640), Player(x=704)
         enemy.update(0, player)
         for frame in range(8):
             self.assertEqual((enemy.state, enemy.row, enemy.frame), ("ATTACK", 2, frame))
-            self.assertEqual(player.health, 3 if frame < 4 else 2)
+            self.assertEqual(player.health, 100 if frame < 4 else 90)
             enemy.update(1 / ENEMY_ATTACK_FPS, player)
         self.assertEqual(enemy.state, "IDLE")
         self.assertAlmostEqual(enemy.attack_cooldown, ENEMY_ATTACK_COOLDOWN)
@@ -42,13 +42,13 @@ class EnemyCombatTests(unittest.TestCase):
             while elapsed < 0.6 - 1e-9:
                 stage.update(1 / fps, player)
                 elapsed += 1 / fps
-                self.assertEqual(player.health, 2 if elapsed >= ENEMY_ATTACK_HIT_TIME - 1e-9 else 3)
+                self.assertEqual(player.health, 90 if elapsed >= ENEMY_ATTACK_HIT_TIME - 1e-9 else 100)
 
     def test_long_frame_crossing_hit_and_end_damages_only_once(self):
         enemy, player = Enemy(x=640), Player(x=704)
         enemy.update(0, player)
         enemy.update(10, player)
-        self.assertEqual((player.health, enemy.state), (2, "IDLE"))
+        self.assertEqual((player.health, enemy.state), (90, "IDLE"))
         self.assertAlmostEqual(enemy.attack_cooldown, 0.6)
 
     def test_attack_freezes_x_and_facing_when_target_moves_behind(self):
@@ -56,7 +56,7 @@ class EnemyCombatTests(unittest.TestCase):
         enemy.update(0, player)
         player.x = 576
         enemy.update(ENEMY_ATTACK_HIT_TIME, player)
-        self.assertEqual((enemy.x, enemy.facing, enemy.state, player.health), (640, 1, "ATTACK", 3))
+        self.assertEqual((enemy.x, enemy.facing, enemy.state, player.health), (640, 1, "ATTACK", 100))
 
     def test_hit_rechecks_forward_distance_and_height_with_boundaries(self):
         for direction in (-1, 1):
@@ -66,7 +66,7 @@ class EnemyCombatTests(unittest.TestCase):
                 enemy.update(0, player)
                 player.x, player.foot_y = 640 + direction * distance, GROUND_Y + height
                 enemy.update(ENEMY_ATTACK_HIT_TIME, player)
-                self.assertEqual(player.health, 2 if hits else 3)
+                self.assertEqual(player.health, 90 if hits else 100)
 
     def test_missed_strike_is_spent_even_if_player_returns_later(self):
         enemy, player = Enemy(x=640), Player(x=704)
@@ -75,20 +75,20 @@ class EnemyCombatTests(unittest.TestCase):
         enemy.update(ENEMY_ATTACK_HIT_TIME, player)
         player.x = 704
         enemy.update(0.1, player)
-        self.assertEqual(player.health, 3)
+        self.assertEqual(player.health, 100)
         self.assertTrue(enemy.attack_hit)
 
     def test_damage_invulnerability_and_zero_health_floor(self):
         player = Player()
         self.assertTrue(player.take_damage())
-        self.assertEqual(player.health, 2)
+        self.assertEqual(player.health, 99)
         self.assertFalse(player.take_damage())
         player.update_damage(PLAYER_HURT_INVULNERABILITY - 0.001)
         self.assertFalse(player.take_damage())
         player.update_damage(0.001)
         self.assertTrue(player.take_damage())
         player.update_damage(1)
-        self.assertTrue(player.take_damage(10))
+        self.assertTrue(player.take_damage(1000))
         self.assertEqual(player.health, 0)
         self.assertFalse(player.take_damage())
         self.assertFalse(Player().take_damage(0))
@@ -99,7 +99,7 @@ class EnemyCombatTests(unittest.TestCase):
         enemy.update(ENEMY_ATTACK_HIT_TIME, player)
         player.update_damage(1)
         enemy.update(0.1, player)
-        self.assertEqual(player.health, 3)
+        self.assertEqual(player.health, 100)
 
     def test_attack_cooldown_prevents_restart_then_allows_next_attack(self):
         enemy, player = Enemy(x=640), Player(x=704)
@@ -111,7 +111,7 @@ class EnemyCombatTests(unittest.TestCase):
         stage.update(0.001, player)
         self.assertEqual((enemy.state, enemy.frame), ("ATTACK", 0))
         stage.update(ENEMY_ATTACK_HIT_TIME, player)
-        self.assertEqual(player.health, 1)
+        self.assertEqual(player.health, 80)
 
     def test_cooldown_allows_following_player_out_of_melee_range(self):
         enemy = Enemy(x=640, attack_cooldown=0.5)
@@ -127,18 +127,21 @@ class EnemyCombatTests(unittest.TestCase):
             player.update(0, Controls(attack_requested=True), enemy)
             self.assertEqual(enemy.state, "DYING")
             enemy.update(1, player)
-            self.assertEqual((enemy.state, player.health), ("DEAD", 3))
+            self.assertEqual((enemy.state, player.health), ("DEAD", 100))
 
     def test_dead_and_dying_enemies_never_attack(self):
         for state in ("DYING", "DEAD"):
             enemy, player = Enemy(x=640, state=state), Player(x=704)
             enemy.update(10, player)
-            self.assertEqual((enemy.state, player.health), ("DEAD", 3))
+            self.assertEqual((enemy.state, player.health), ("DEAD", 100))
 
     def test_zero_health_target_does_not_trigger_new_attack(self):
         enemy = Enemy(x=640)
         enemy.update(1, Player(x=704, health=0))
-        self.assertEqual(enemy.state, "IDLE")
+        self.assertNotEqual(enemy.state, "ATTACK")
+        self.assertLess(enemy.x, 640)  # Make room for the falling body.
+        enemy.update(1, Player(x=704, health=0))
+        self.assertEqual((enemy.state, enemy.aware), ("IDLE", False))
 
     def test_attack_keeps_exit_locked_and_uses_upright_body_bounds(self):
         stage = Stage([], enemy=Enemy(x=640, state="ATTACK", animation_time=0.5))
@@ -171,8 +174,28 @@ class EnemyCombatTests(unittest.TestCase):
         player.x = ARROW_X[1]
         stage.try_transition(player, controls)
         stage.update(ENEMY_ATTACK_HIT_TIME / 2, player)
-        self.assertEqual(player.health, 2)
+        self.assertEqual(player.health, 90)
         player.x = ARROW_X[-1]
         immunity = player.hurt_time
         stage.try_transition(player, controls)
-        self.assertEqual((player.health, player.hurt_time), (2, immunity))
+        self.assertEqual((player.health, player.hurt_time), (90, immunity))
+
+    def test_three_melee_hits_leave_seventy_hp_and_tenth_hit_is_lethal(self):
+        for direction in (-1, 1):
+            player = Player(x=640)
+            stage = Stage([], enemy=Enemy(x=640 + direction * 64))
+            previous_health = player.health
+            hits = 0
+            for _ in range(900):
+                stage.update(1 / 60, player)
+                player.update(1 / 60, Controls(), stage.enemy)
+                if player.health != previous_health:
+                    hits += 1
+                    self.assertEqual(player.health, 100 - hits * 10)
+                    if hits == 3:
+                        self.assertEqual(player.health, 70)
+                        self.assertFalse(player.incapacitated)
+                    previous_health = player.health
+                if player.incapacitated:
+                    break
+            self.assertEqual((hits, player.health, player.state), (10, 0, "DYING"))

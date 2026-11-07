@@ -12,7 +12,7 @@ from game import Controls, Player, Stage, spawn_items
 from resources import ResourceError, load_images, release_images
 from rendering import (
     draw_background, draw_character, draw_falling_items, draw_health, draw_held_weapon, draw_items, draw_pickup_hint,
-    draw_enemy, draw_stage_arrows,
+    draw_enemy, draw_stage_arrows, camera_offset,
 )
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
@@ -46,15 +46,17 @@ def run(frame_limit=None):
             player.pick_up(stage.items, controls)
             player.update(dt, controls, stage.enemy)
             stage.try_transition(player, controls)
+            offset = camera_offset(player)
+            camera = {"offset": offset} if offset != (0.0, 0.0) else {}
             pico2d.clear_canvas()
-            draw_background(images[stage.background_key])
-            draw_stage_arrows(images, stage.number, stage.arrow_time, directions=stage.visible_arrows)
-            draw_items(images, stage.items)
-            draw_enemy(images["enemy"], stage.enemy)
-            draw_character(images[player.character_key], player)
-            draw_held_weapon(images, player)
-            draw_falling_items(images, stage.items)
-            draw_pickup_hint(images, stage.items, player)
+            draw_background(images[stage.background_key], **camera)
+            draw_stage_arrows(images, stage.number, stage.arrow_time, directions=stage.visible_arrows, **camera)
+            draw_items(images, stage.items, **camera)
+            draw_enemy(images["enemy"], stage.enemy, **camera)
+            draw_character(images[player.character_key], player, **camera)
+            draw_held_weapon(images, player, **camera)
+            draw_falling_items(images, stage.items, **camera)
+            draw_pickup_hint(images, stage.items, player, **camera)
             draw_health(images["health_bar"], player)
             pico2d.update_canvas()
             frames += 1

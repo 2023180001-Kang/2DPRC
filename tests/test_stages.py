@@ -11,7 +11,7 @@ from resources import IMAGE_FILES, ROOT
 from settings import (
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_SWAY_PERIOD, ARROW_TRIGGER_HALF_WIDTH,
     ARROW_WIDTH, ARROW_X, GROUND_Y, HEIGHT, ITEM_WIDTHS, PLAYER_HALF_WIDTH, RUN_SPEED,
-    GROUND_DRAG, GROUND_FRICTION, STAGE_ARROWS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
+    GROUND_DRAG, GROUND_FRICTION, STAGE_ARROWS, STAGE_BACKGROUNDS, STAGE_ENTRY_LEFT_X, STAGE_ENTRY_RIGHT_X, WALK_SPEED, WIDTH,
 )
 
 
@@ -104,9 +104,9 @@ class StageTests(unittest.TestCase):
         self.assertEqual(counts, {3, 4, 5})
         self.assertGreater(len(layouts), 1)
 
-    def test_second_stage_right_arrow_is_displayed_but_does_nothing(self):
+    def test_final_stage_right_arrow_is_displayed_but_does_nothing(self):
         items = [Item("dagger", 500)]
-        stage = Stage(items=items, number=2)
+        stage = Stage(items=items, number=max(STAGE_BACKGROUNDS))
         player = Player(x=WIDTH - PLAYER_HALF_WIDTH, weapon="steel_pipe", health=2,
                         state="RUN", animation_time=0.7)
         controls = Controls(held={"right", "lshift"}, pickup_requested=True)
@@ -116,7 +116,7 @@ class StageTests(unittest.TestCase):
             for _ in range(10):
                 self.assertFalse(stage.try_transition(player, controls))
             spawn.assert_not_called()
-        self.assertEqual(stage.number, 2)
+        self.assertEqual(stage.number, max(STAGE_BACKGROUNDS))
         self.assertIs(stage.items, items)
         self.assertEqual(vars(player), original_player)
         self.assertEqual(vars(controls), original_controls)

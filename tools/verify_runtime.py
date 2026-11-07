@@ -90,7 +90,7 @@ def verify_jumping(output):
 
     def observe_health(image, player):
         draw_health(image, player)
-        assert player.health == 3
+        assert player.health == 100
         shot = None
         if tick < 100 and player.state == "JUMP":
             if player.vertical_speed > 0:
@@ -175,7 +175,7 @@ def verify_double_jumping(output):
 
     def observe_health(image, player):
         draw_health(image, player)
-        assert player.health == 3
+        assert player.health == 100
         shot = shots.get(tick)
         if shot is None and tick < 130 and player.jump_count == 2 and player.vertical_speed <= 0:
             shot = "double-peak"
@@ -295,7 +295,7 @@ def verify_pickup(output):
 
     def observe_health(image, player):
         draw_health(image, player)
-        assert player.health == 3
+        assert player.health == 100
         shot = shots.get(tick)
         if player.state == "JUMP" and player.vertical_speed <= 0:
             shot = "pickup-jump-dagger" if player.weapon == "dagger" else "pickup-jump-pipe"
@@ -379,7 +379,7 @@ def verify_drop_and_hint(output):
 
     def observe_health(image, player):
         draw_health(image, player)
-        assert player.health == 3
+        assert player.health == 100
         if tick in shots:
             capture(output / f"{shots[tick]}.png")
 
@@ -475,7 +475,7 @@ def verify_air_drop(output):
 
             def observe_health(image, player):
                 draw_health(image, player)
-                assert player.health == 3
+                assert player.health == 100
                 items = stages[0].items
                 shot = None
                 if tick == 0:
@@ -598,7 +598,7 @@ def verify_stage_arrows(output):
             elif stage.number == 1 and player.x >= ARROW_X[1] - ARROW_WIDTH / 2 - 32:
                 shot = "approach"
             elif stage.number == 2:
-                assert player.health == 3
+                assert player.health == 100
                 if entered_at is None:
                     entered_at = tick
                     initial_items = tuple(stage.items)
@@ -725,7 +725,7 @@ def verify_stage_roundtrip(output):
         nonlocal phase, phase_at, first_snapshot, second_original, second_dropped
         draw_health(image, player)
         stage = stages[0]
-        assert player.health == 3
+        assert player.health == 100
         shot = None
         if tick == 0:
             first_snapshot = tuple(stage.items)
@@ -900,7 +900,7 @@ def verify_air_stage_transition(output):
         def observe_health(image, player):
             nonlocal landed_at
             draw_health(image, player)
-            assert player.health == 3 and player.weapon == "steel_pipe"
+            assert player.health == 100 and player.weapon == "steel_pipe"
             shot = None
             if transferred_at is None:
                 assert stages[0].number == source
@@ -1004,7 +1004,7 @@ def verify():
 
     def observe_health(image, player):
         draw_health(image, player)
-        assert player.health == 3
+        assert player.health == 100
         if tick in shots:
             capture(output / f"{shots[tick]}.png")
 

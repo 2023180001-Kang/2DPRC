@@ -81,8 +81,10 @@ def verify_encounters(output):
         if tick == 0:
             poll_events(controls)
             push("focus", True)
-        if tick in (1, 11, 75, 80, 100, 165, 175):
+        if tick in (1, 11, 75, 80, 100, 175):
             player.x = ARROW_X[1]
+        if tick == 165:
+            player.x = 800  # Keep this two-map regression before the next exit.
         if tick == 10:
             player.x, player.facing = stage.enemy.x - 70, 1
             push("down", "a")
@@ -126,7 +128,7 @@ def verify_encounters(output):
 
     def observe_health(image, current):
         draw_health(image, current)
-        assert current.health == 3
+        assert current.health == 100
         if tick in expected:
             filename = f"enemy-gameplay-{tick:03d}.png"
             capture(output / filename)
@@ -151,7 +153,7 @@ def verify_encounters(output):
     return {"frames": result["frames"], "fixed_dt": 1 / 60, "spawned_per_map": {"1": 1, "2": 1},
             "live_and_dying_exit_blocked": "PASS", "unlock_after_full_death": "PASS",
             "return_and_no_respawn": "PASS", "off_map_death_paused": "PASS",
-            "final_map_no_third_stage": "PASS", "screenshots": shots}
+            "second_map_exit_unlocked": "PASS", "screenshots": shots}
 
 
 def verify_running_attacks(output):
@@ -216,7 +218,7 @@ def verify_running_attacks(output):
                   patch("main.draw_health", side_effect=observe)):
                 result = main.run(frame_limit=220)
             assert hit_tick is not None and dead_tick is not None and len(shots) == 3
-            assert stage.number == 1 and player.health == 3
+            assert stage.number == 1 and player.health == 100
             assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
             results.append({"weapon": weapon, "facing": facing, "frames": result["frames"],
                             "attack_tick": attack_tick, "hit_tick": hit_tick, "dead_tick": dead_tick,

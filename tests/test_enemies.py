@@ -14,7 +14,7 @@ from settings import (
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_WIDTH, ARROW_X,
     ATTACK_DURATION, ATTACK_HEIGHT_RANGE, ATTACK_RANGE, ENEMY_DEATH_DURATION,
     ENEMY_DEATH_FPS, ENEMY_SCALE, ENEMY_SOURCE, FRAME_BOTTOM_PADDING, GROUND_Y,
-    PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_ENTRY_LEFT_X, WIDTH,
+    PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_BACKGROUNDS, STAGE_ENTRY_LEFT_X, WIDTH,
 )
 from tools.prepare_character import prepare
 
@@ -66,7 +66,7 @@ class EnemyTests(unittest.TestCase):
                 self.assertTrue(self.attack(stage, player, controls))
                 self.assertEqual((stage.enemy.state, stage.enemy.frame), ("DYING", 0))
                 self.assertEqual(stage.visible_arrows, ())
-                self.assertEqual(player.health, 3)
+                self.assertEqual(player.health, 100)
 
     def test_attack_distance_direction_and_height_boundaries(self):
         for dx, height, hits in ((0, 0, True), (ATTACK_RANGE, 0, True),
@@ -218,13 +218,13 @@ class EnemyTests(unittest.TestCase):
         self.assertTrue(stage.enemy.defeated)
 
     def test_last_map_right_arrow_appears_after_defeat_but_has_no_destination(self):
-        stage = Stage([], number=2)
+        stage = Stage([], number=max(STAGE_BACKGROUNDS))
         self.assertEqual(stage.visible_arrows, (-1,))
         stage.enemy.hit()
         stage.update(ENEMY_DEATH_DURATION)
         self.assertEqual(stage.visible_arrows, (-1, 1))
         self.assertFalse(stage.try_transition(Player(x=ARROW_X[1]), Controls()))
-        self.assertEqual(stage.number, 2)
+        self.assertEqual(stage.number, max(STAGE_BACKGROUNDS))
 
     def test_renderer_uses_only_the_same_unlocked_arrow_directions_as_transition(self):
         images = {key: Mock(w=512, h=320) for key in ("arrow_left", "arrow_right")}

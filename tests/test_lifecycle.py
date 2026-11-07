@@ -6,7 +6,7 @@ import pico2d.pico2d as core
 import resources
 import sdl2
 
-from game import Enemy, Item, Player
+from game import Enemy, Item, Player, Stage
 from settings import ARROW_X, STAGE_ENTRY_LEFT_X
 
 
@@ -24,6 +24,10 @@ class LifecycleTests(unittest.TestCase):
             "armed_character": Mock(texture=sentinel.armed_character_texture),
             "right_hand": Mock(texture=sentinel.right_hand_texture),
             "enemy": Mock(texture=sentinel.enemy_texture),
+            "city_2_1": Mock(texture=sentinel.city_2_1_texture),
+            "city_2_2": Mock(texture=sentinel.city_2_2_texture),
+            "factory_3_1": Mock(texture=sentinel.factory_3_1_texture),
+            "factory_3_2": Mock(texture=sentinel.factory_3_2_texture),
         }
         self.retained_images = tuple(self.images.values())
         self.textures = {image.texture: image for image in self.retained_images}
@@ -107,6 +111,7 @@ class LifecycleTests(unittest.TestCase):
         self.assert_core_reset()
 
     def test_normal_frame_releases_images_before_closing_canvas(self):
+        enemy_image = self.images["enemy"]
         drawing = Mock()
         drawing.attach_mock(self.draw_background, "background")
         drawing.attach_mock(self.draw_stage_arrows, "arrows")
@@ -134,12 +139,12 @@ class LifecycleTests(unittest.TestCase):
         self.spawn_items.assert_called_once_with()
         player = self.draw_character.call_args.args[1]
         self.assertIsInstance(player, main.Player)
-        self.assertEqual(player.health, 3)
+        self.assertEqual(player.health, 100)
         self.assertEqual(drawing.mock_calls, [
             call.background(self.retained_images[0]),
             call.arrows(self.images, 1, ANY, directions=(1,)),
             call.items(self.images, self.items),
-            call.enemy(self.retained_images[-1], ANY),
+            call.enemy(enemy_image, ANY),
             call.character(self.retained_images[1], player),
             call.weapon(self.images, player),
             call.falling_items(self.images, self.items),
@@ -161,6 +166,19 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result["frames"], 3)
         self.assertEqual(initialization.mock_calls, [call.player(), call.spawn()])
         self.assertEqual(self.draw_items.call_args_list, [call(self.images, self.items)] * 3)
+        self.assert_images_released_before_close()
+
+    def test_melee_hit_translates_every_world_layer_but_keeps_hud_independent(self):
+        stage = Stage([], enemy=Enemy(x=704, state="ATTACK"))
+        with patch.object(main, "Stage", return_value=stage):
+            main.run(frame_limit=1)
+        player = self.draw_health.call_args.args[1]
+        self.assertEqual(player.health, 90)
+        for draw in (self.draw_background, self.draw_stage_arrows, self.draw_items,
+                     self.draw_enemy, self.draw_character, self.draw_held_weapon,
+                     self.draw_falling_items, self.draw_pickup_hint):
+            self.assertEqual(draw.call_args.kwargs["offset"], main.camera_offset(player))
+        self.assertEqual(self.draw_health.call_args.kwargs, {})
         self.assert_images_released_before_close()
 
     def test_drawing_traceback_retains_image_but_texture_is_released(self):
@@ -251,7 +269,7 @@ class LifecycleTests(unittest.TestCase):
     def test_missing_or_corrupt_items_and_stage_images_release_previous_textures_before_close(self):
         self.load_images.side_effect = resources.load_images
         textures = list(self.textures)
-        for index, name in enumerate(("dagger", "steel_pipe", "second_background", "arrow_left", "arrow_right"), start=3):
+        for index, name in enumerate(tuple(resources.IMAGE_FILES)[3:], start=3):
             for corrupt in (False, True):
                 with self.subTest(item=name, corrupt=corrupt):
                     for texture, image in self.textures.items():
@@ -270,7 +288,7 @@ class LifecycleTests(unittest.TestCase):
                         with self.assertRaises(resources.ResourceError) as caught:
                             main.run(frame_limit=1)
 
-                    self.assertIn(resources.IMAGE_FILES[name], str(caught.exception))
+                    self.assertIn(str(resources.ROOT / resources.IMAGE_FILES[name]), str(caught.exception))
                     if corrupt:
                         self.assertIs(caught.exception.__cause__, error)
                     self.assertEqual(self.destroy_texture.call_args_list, [

@@ -153,7 +153,7 @@ def verify(output):
         nonlocal pending_shot
         draw_health(image, current)
         enemy = stage.enemy
-        assert current.health == 3
+        assert current.health == 100
         assert enemy.row in (0, 1, 3) and enemy.foot_y == GROUND_Y
         if enemy.alive:
             assert 1 not in stage.visible_arrows

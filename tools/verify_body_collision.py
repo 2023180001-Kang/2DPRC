@@ -138,7 +138,7 @@ def verify(output):
             assert current.grounded and current.horizontal_speed == 0 and current.display_state == "IDLE"
         if phase == "kill" and current.attacking:
             assert current.display_state == "ATTACK"
-        assert current.health == 3
+        assert current.health == 100
         records.append({"tick": tick, "phase": phase, "x": current.x, "foot_y": current.foot_y,
                         "speed": current.horizontal_speed, "enemy": enemy.state, "support": current.support_y,
                         "display_state": current.display_state, "jumps": current.jump_count})

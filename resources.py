@@ -15,6 +15,10 @@ IMAGE_FILES = {
     "armed_character": "assets/armed_character.png",
     "right_hand": "assets/armed_character_right_hand.png",
     "enemy": "assets/enemy.png",
+    "city_2_1": "hoodman_city_stage_2_1_1672x941.png",
+    "city_2_2": "hoodman_city_stage_2_2_1672x941.png",
+    "factory_3_1": "hoodman_factory_stage_3_1_1672x941.png",
+    "factory_3_2": "hoodman_factory_stage_3_2_1672x941.png",
 }
 
 

@@ -125,6 +125,18 @@ class Enemy:
         self.state, self.animation_time = "DYING", 0.0
         return True
 
+    def try_hit(self, player):
+        """Resolve one hit per swing throughout the active attack animation."""
+        if not player.attacking or player.attack_hit:
+            return False
+        distance = player.facing * (self.x - player.x)
+        if (0 <= distance <= ATTACK_RANGE
+                and abs(player.foot_y - self.foot_y) <= ATTACK_HEIGHT_RANGE
+                and self.hit()):
+            player.attack_hit = True
+            return True
+        return False
+
     def update(self, dt):
         if self.state == "IDLE":
             self.animation_time = (self.animation_time + dt) % (FRAME_COUNT / ENEMY_IDLE_FPS)
@@ -206,12 +218,7 @@ class Stage:
                      if direction < 0 or self.enemy.defeated)
 
     def hit_enemy(self, player):
-        if not player.attacking or player.attack_time != 0.0:
-            return False
-        distance = player.facing * (self.enemy.x - player.x)
-        if 0 <= distance <= ATTACK_RANGE and abs(player.foot_y - self.enemy.foot_y) <= ATTACK_HEIGHT_RANGE:
-            return self.enemy.hit()
-        return False
+        return self.enemy.try_hit(player)
 
     def update(self, dt):
         self.arrow_time = (self.arrow_time + dt) % ARROW_SWAY_PERIOD
@@ -267,6 +274,7 @@ class Player:
     weapon: str | None = None
     jump_count: int = 0
     attack_time: float | None = None
+    attack_hit: bool = False
     horizontal_speed: float = 0.0
     boundary_speed: float = 0.0
     support_y: float = GROUND_Y
@@ -419,6 +427,7 @@ class Player:
             # Requests made during an attack cannot queue or restart it.
         elif controls.attack_requested:
             self.attack_time = 0.0
+            self.attack_hit = False
             attack_started = True
         controls.attack_requested = False
 
@@ -437,6 +446,9 @@ class Player:
                     boundary_speed = self.boundary_speed
                 direction = controls.direction if controls.focused else 0
                 landed, body_blocked = self._resolve_enemy_collision(obstacle, old_x, old_y, direction)
+                # Check every movement substep: running/jumping can enter and
+                # leave the attack range between two rendered frames.
+                obstacle.try_hit(self)
                 if landed or (self.state != "JUMP" and not self.grounded):
                     self._update_motion(0, controls)
                 if body_blocked and self.grounded:

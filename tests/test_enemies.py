@@ -14,15 +14,15 @@ from settings import (
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_WIDTH, ARROW_X,
     ATTACK_DURATION, ATTACK_HEIGHT_RANGE, ATTACK_RANGE, ENEMY_DEATH_DURATION,
     ENEMY_DEATH_FPS, ENEMY_SCALE, ENEMY_SOURCE, FRAME_BOTTOM_PADDING, GROUND_Y,
-    PLAYER_HALF_WIDTH, STAGE_ARROWS, STAGE_ENTRY_LEFT_X, WIDTH,
+    PLAYER_HALF_WIDTH, RUN_SPEED, STAGE_ARROWS, STAGE_ENTRY_LEFT_X, WIDTH,
 )
 from tools.prepare_character import prepare
 
 
 class EnemyTests(unittest.TestCase):
     def attack(self, stage, player, controls, dt=0):
-        started = player.update(dt, controls)
-        return stage.hit_enemy(player) if started else False
+        player.update(dt, controls)
+        return stage.hit_enemy(player)
 
     def test_one_random_enemy_per_map_with_clear_entry_arrows_and_screen_bounds(self):
         for number, entry in ((1, WIDTH / 2), (2, STAGE_ENTRY_LEFT_X)):
@@ -78,18 +78,64 @@ class EnemyTests(unittest.TestCase):
                     player = Player(x=600, facing=facing, foot_y=GROUND_Y + height)
                     self.assertEqual(self.attack(stage, player, Controls(attack_requested=True)), hits)
 
-    def test_missed_or_held_attack_cannot_hit_later_by_approaching(self):
+    def test_running_attack_hits_after_entering_range_during_the_swing(self):
+        for weapon in (None, "dagger", "steel_pipe"):
+            for facing in (-1, 1):
+                for fps in (30, 60, 144):
+                    with self.subTest(weapon=weapon, facing=facing, fps=fps):
+                        enemy = Enemy(x=640 + facing * 140)
+                        player = Player(x=640, facing=facing, weapon=weapon,
+                                        horizontal_speed=facing * RUN_SPEED)
+                        direction = "right" if facing > 0 else "left"
+                        controls = Controls(held={direction, "lshift"}, attack_requested=True)
+                        self.assertTrue(player.update(1 / fps, controls, enemy))
+                        self.assertEqual(enemy.state, "IDLE")
+                        for _ in range(fps // 10 + 1):
+                            player.update(1 / fps, controls, enemy)
+                        self.assertEqual(enemy.state, "DYING")
+                        self.assertTrue(player.attacking)
+                        stage = Stage([], enemy=enemy)
+                        self.assertEqual(stage.visible_arrows, ())
+                        stage.update(ENEMY_DEATH_DURATION)
+                        self.assertEqual((enemy.state, stage.visible_arrows), ("DEAD", (1,)))
+
+    def test_running_attack_checks_path_even_when_final_position_is_above_enemy(self):
+        enemy = Enemy(x=750)
+        player = Player(x=640, horizontal_speed=RUN_SPEED)
+        controls = Controls(held={"right", "lshift"}, attack_requested=True, jump_requested=True)
+        player.update(0.25, controls, enemy)
+        self.assertGreater(player.foot_y - GROUND_Y, ATTACK_HEIGHT_RANGE)
+        self.assertEqual(enemy.state, "DYING")
+
+    def test_held_attack_cannot_hit_after_the_swing_has_ended(self):
         stage = Stage([], enemy=Enemy(x=850))
         player, controls = Player(x=600), Controls()
         controls.set_key("a", True)
         self.assertFalse(self.attack(stage, player, controls))
-        player.x = 800
         self.assertFalse(self.attack(stage, player, controls, 0.1))
         controls.set_key("a", True)
         self.assertFalse(self.attack(stage, player, controls, ATTACK_DURATION))
+        player.x = 800
+        self.assertFalse(self.attack(stage, player, controls, 0.1))
         self.assertEqual(stage.enemy.state, "IDLE")
         controls.set_key("a", False)
         controls.set_key("a", True)
+        self.assertTrue(self.attack(stage, player, controls))
+
+    def test_active_attack_can_hit_later_but_only_one_enemy_once(self):
+        stage = Stage([], enemy=Enemy(x=850))
+        player = Player(x=600)
+        controls = Controls(attack_requested=True)
+        self.assertFalse(self.attack(stage, player, controls))
+        player.x = 800
+        self.assertTrue(self.attack(stage, player, controls, 0.1))
+        stage.update(0.2)
+        self.assertFalse(stage.hit_enemy(player))
+        self.assertAlmostEqual(stage.enemy.animation_time, 0.2)
+        stage.enemy = Enemy(x=850)
+        self.assertFalse(stage.hit_enemy(player))
+        player.update(ATTACK_DURATION, controls)
+        controls.attack_requested = True
         self.assertTrue(self.attack(stage, player, controls))
 
     def test_no_attack_cannot_hit_and_rehits_do_not_restart_fall(self):

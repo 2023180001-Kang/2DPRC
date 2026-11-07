@@ -44,8 +44,7 @@ def run(frame_limit=None):
                 break
             stage.update(dt)
             player.pick_up(stage.items, controls)
-            if player.update(dt, controls, stage.enemy):
-                stage.hit_enemy(player)
+            player.update(dt, controls, stage.enemy)
             stage.try_transition(player, controls)
             pico2d.clear_canvas()
             draw_background(images[stage.background_key])

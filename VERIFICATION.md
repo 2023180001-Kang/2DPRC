@@ -1,5 +1,33 @@
 # 검증 결과
 
+## 달리기 공격 명중 누락 수정·새 후드 적 검증
+
+구현 `9d8f2d0`, 새 적/실행 검증 `caca763` 기준입니다. PRD 36절 및 AC-66·71·72를 따릅니다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 오류 재현 | 수정 전 이동 중 명중·점프 경로 명중·재생 중 후속 명중 회귀가 실패함을 확인 |
+| 자동 테스트 | `python -m unittest discover`: 247개 통과 |
+| 달리기 명중 | 맨손·단검·쇠파이프×양방향×30/60/144 FPS, 공격 시작 후 범위에 들어와도 쓰러짐 시작 |
+| 판정 지속/종료 | 최대 1/120초 이동 경로 판정, 한 공격당 한 번만 명중, 쓰러짐 재시작 없음, 종료 후 접근·A 유지에는 명중 없음 |
+| 새 적 이미지 | 새 원본 보존 및 파생 파일 바이트 일치, 8열×4행·발 정렬, 대기/쓰러짐 양방향 32포즈 확인 |
+| 실제 SDL 달리기 | 6개 시나리오 각 115프레임, 합계 690프레임. 범위 밖 40틱 공격 → 42틱 명중 → 102틱 DEAD/진행 해제 |
+| 진행/재방문 회귀 | 기존 적 시나리오 180프레임 통과, 쓰러짐 중 잠금·완료 후 진행·두 맵 상태 보존 |
+| 충돌 회귀 | 작업 공간의 `tools.verify_body_collision`: 491프레임·14장, 더블 점프 우회·접촉 IDLE/공격·시체 착지/이탈 통과 |
+| 무기 회귀 | `tools.verify_weapons`: 380프레임 및 160포즈, 양방향 장착·공격·가속·마찰 통과 |
+| 일반 실행 | `python main.py --frames 180`: 180프레임·3.049646초·평균 59.0232 FPS, 정상 종료 |
+| 의존성 | `python -m pip check`: No broken requirements found |
+
+실행 명령은 프로젝트 루트에서 `.\.venv\Scripts\python.exe`를 사용했습니다. 실제 SDL 이벤트 큐 입력이며 고정 dt 시나리오와 일반 실행 측정을 구분했습니다.
+
+- `python -m tools.prepare_enemy`: 새 원본으로 정렬 시트 생성. `artifacts/enemy-preview.png`에서 전체 포즈 정렬을 확인했습니다.
+- `python -m tools.verify_enemies`: 총 870프레임과 적 32포즈, 화면 34장 및 `artifacts/enemies-runtime.json` 생성.
+- `artifacts/enemy-poses-right.png`: 새 적의 대기 및 쓰러짐 8프레임 정렬 확인.
+- `artifacts/enemy-running-steel_pipe-right-hit-during-run.png`: 달리기 공격 중 명중한 시점의 새 적 표시 확인.
+- `artifacts/enemy-running-unarmed-left-dead-and-unlocked.png`: 새 적의 마지막 누운 모습과 오른쪽 화살표 해제 확인.
+
+아래는 이전 버전의 검증 이력입니다.
+
 ## 환경과 방법
 
 - Windows, Python 3.13.15, pico2d 1.5.1, PySDL2 0.9.17, PySDL2-DLL 2.32.10, Pillow 12.3.0.

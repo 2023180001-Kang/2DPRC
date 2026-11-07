@@ -13,7 +13,7 @@ from events import poll_events
 from game import Enemy, Player, Stage, spawn_enemy
 from rendering import draw_enemy, draw_health
 from resources import ROOT, load_images, release_images
-from settings import ARROW_X, ENEMY_DEATH_FPS, WIDTH
+from settings import ARROW_X, ATTACK_RANGE, ENEMY_DEATH_FPS, WIDTH
 from tools.verify_runtime import capture, push
 
 
@@ -143,9 +143,80 @@ def verify_encounters(output):
             "final_map_no_third_stage": "PASS", "screenshots": shots}
 
 
+def verify_running_attacks(output):
+    """Start outside reach, then hit while holding run and A in the real loop."""
+    results = []
+    for weapon in (None, "dagger", "steel_pipe"):
+        for facing in (1, -1):
+            enemy = Enemy(x=WIDTH / 2, facing=-facing)
+            stage = Stage([], enemy=enemy)
+            player = Player(x=enemy.x - facing * 500, facing=facing, weapon=weapon)
+            tick, clock = -1, 0.0
+            attack_tick = hit_tick = dead_tick = None
+            shots = []
+            label = f"{weapon or 'unarmed'}-{'right' if facing > 0 else 'left'}"
+
+            def feed(controls):
+                nonlocal tick, clock, attack_tick
+                tick += 1
+                clock = (tick + 1) / 60
+                if tick == 0:
+                    poll_events(controls)
+                    push("focus", True)
+                    push("down", "right" if facing > 0 else "left")
+                    push("down", "lshift")
+                distance = facing * (enemy.x - player.x)
+                if attack_tick is None and distance <= 145:
+                    assert distance > ATTACK_RANGE
+                    attack_tick = tick
+                    push("down", "a")
+                if dead_tick is not None and tick > dead_tick + 12:
+                    push("quit")
+                return poll_events(controls)
+
+            def observe(image, current):
+                nonlocal hit_tick, dead_tick
+                draw_health(image, current)
+                checkpoint = None
+                if tick == attack_tick:
+                    assert enemy.state == "IDLE" and current.attacking
+                    assert facing * (enemy.x - current.x) > ATTACK_RANGE
+                    checkpoint = "started-outside-range"
+                if enemy.state == "DYING" and hit_tick is None:
+                    hit_tick = tick
+                    assert attack_tick is not None and hit_tick > attack_tick
+                    assert current.attacking and current.attack_hit
+                    assert stage.visible_arrows == ()
+                    checkpoint = "hit-during-run"
+                if enemy.defeated and dead_tick is None:
+                    dead_tick = tick
+                    assert stage.visible_arrows == (1,)
+                    checkpoint = "dead-and-unlocked"
+                if enemy.state == "DYING":
+                    assert stage.visible_arrows == ()
+                if checkpoint:
+                    filename = f"enemy-running-{label}-{checkpoint}.png"
+                    capture(output / filename)
+                    shots.append(filename)
+
+            with (patch("main.Stage", return_value=stage), patch("main.Player", return_value=player),
+                  patch("main.poll_events", side_effect=feed),
+                  patch("main.perf_counter", side_effect=lambda: clock), patch("main.sleep"),
+                  patch("main.draw_health", side_effect=observe)):
+                result = main.run(frame_limit=220)
+            assert hit_tick is not None and dead_tick is not None and len(shots) == 3
+            assert stage.number == 1 and player.health == 3
+            assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
+            results.append({"weapon": weapon, "facing": facing, "frames": result["frames"],
+                            "attack_tick": attack_tick, "hit_tick": hit_tick, "dead_tick": dead_tick,
+                            "running_hit_and_unlock": "PASS", "screenshots": shots})
+    return results
+
+
 if __name__ == "__main__":
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
-    result = {"pose_screenshots": verify_gallery(output), "encounters": verify_encounters(output)}
+    result = {"pose_screenshots": verify_gallery(output), "encounters": verify_encounters(output),
+              "running_attacks": verify_running_attacks(output)}
     (output / "enemies-runtime.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))

@@ -17,6 +17,12 @@ from rendering import (
 from settings import HEIGHT, TARGET_FPS, WIDTH
 
 
+def set_window_title(hit_test_mode=False):
+    title = (b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap/drop | A: attack"
+             b" | R: restart | H: hit-test ")
+    core.SDL_SetWindowTitle(core.window, title + (b"ON" if hit_test_mode else b"OFF"))
+
+
 def run(frame_limit=None):
     images = {}
     # pico2d 1.5.1 cleanup expects these globals even after partial startup.
@@ -27,7 +33,7 @@ def run(frame_limit=None):
         if not core.window or not core.renderer:
             raise RuntimeError(f"Cannot create canvas: {core.SDL_GetError()!r}")
         pico2d.hide_lattice()
-        core.SDL_SetWindowTitle(core.window, b"2DPRC | Arrows: walk | Shift: run | Space: jump | F: pickup/swap/drop | A: attack")
+        set_window_title()
         images = load_images()
         player = Player()
         stage = Stage(items=spawn_items())
@@ -42,6 +48,19 @@ def run(frame_limit=None):
             running = poll_events(controls)
             if not running:
                 break
+            if controls.restart_requested:
+                player = Player()
+                stage = Stage(items=spawn_items())
+                # Keep R/H latched until release, but discard previous gameplay input.
+                controls.held.intersection_update({"r", "h"})
+                controls.jump_requested = controls.pickup_requested = controls.attack_requested = False
+                dt = 0.0
+                set_window_title()
+            elif controls.hit_test_requested and not player.incapacitated:
+                player.hit_test_mode = not player.hit_test_mode
+                set_window_title(player.hit_test_mode)
+            # Consume each request once; H made after death is not reserved.
+            controls.restart_requested = controls.hit_test_requested = False
             stage.update(dt, player)
             player.pick_up(stage.items, controls)
             player.update(dt, controls, stage.enemy)

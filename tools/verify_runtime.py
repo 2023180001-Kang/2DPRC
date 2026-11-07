@@ -31,7 +31,8 @@ def push(kind, value=None):
         event.key.windowID = sdl2.SDL_GetWindowID(core.window)
         event.key.keysym.sym = {"left": sdl2.SDLK_LEFT, "right": sdl2.SDLK_RIGHT,
                                "lshift": sdl2.SDLK_LSHIFT, "rshift": sdl2.SDLK_RSHIFT,
-                               "r": sdl2.SDLK_r, "space": sdl2.SDLK_SPACE, "f": sdl2.SDLK_f,
+                               "r": sdl2.SDLK_r, "h": sdl2.SDLK_h,
+                               "space": sdl2.SDLK_SPACE, "f": sdl2.SDLK_f,
                                "z": sdl2.SDLK_z, "a": sdl2.SDLK_a}[value]
     elif kind == "quit":
         event.type = sdl2.SDL_QUIT
@@ -965,8 +966,8 @@ def verify():
     actions = {
         0: [("focus", True)],
         1: [("down", "right")],
-        10: [("down", "r")],
-        11: [("up", "r")],
+        10: [("down", "z")],
+        11: [("up", "z")],
         31: [("down", "lshift")],
         40: [("down", "rshift")],
         41: [("up", "lshift")],

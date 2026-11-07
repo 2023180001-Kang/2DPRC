@@ -75,9 +75,11 @@ class Controls:
     jump_requested: bool = False
     pickup_requested: bool = False
     attack_requested: bool = False
+    restart_requested: bool = False
+    hit_test_requested: bool = False
 
     def set_key(self, key, down):
-        if key not in {"left", "right", "lshift", "rshift", "space", "f", "a"}:
+        if key not in {"left", "right", "lshift", "rshift", "space", "f", "a", "r", "h"}:
             return
         if down and self.focused:
             if key == "space" and key not in self.held:
@@ -86,6 +88,10 @@ class Controls:
                 self.pickup_requested = True
             if key == "a" and key not in self.held:
                 self.attack_requested = True
+            if key == "r" and key not in self.held:
+                self.restart_requested = True
+            if key == "h" and key not in self.held:
+                self.hit_test_requested = True
             self.held.add(key)
         else:
             self.held.discard(key)
@@ -386,6 +392,7 @@ class Player:
     kill_turn_time: float = 0.0
     ground_y: float = GROUND_Y
     death_knockback_direction: int = 0
+    hit_test_mode: bool = False
 
     def set_ground_y(self, ground_y):
         """Rebase world height while keeping the current height above ground."""
@@ -433,7 +440,10 @@ class Player:
     def take_damage(self, amount=1, *, source_x=None):
         if self.health <= 0 or self.hurt_time > 1e-9 or amount <= 0:
             return False
-        self.health = max(0, self.health - amount)
+        # Test mode still accepts the hit, feedback and normal hurt cooldown.
+        # Keeping HP positive lets the enemy continue its normal attack cycle.
+        if not self.hit_test_mode:
+            self.health = max(0, self.health - amount)
         self.hurt_time = PLAYER_HURT_INVULNERABILITY
         self.hit_feedback_time = max(CAMERA_SHAKE_DURATION, HEALTH_SHAKE_DURATION)
         if self.incapacitated:

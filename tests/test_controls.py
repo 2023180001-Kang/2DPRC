@@ -47,7 +47,7 @@ class InputTests(unittest.TestCase):
 
     def test_unsupported_keys_are_ignored(self):
         controls = Controls()
-        for key in ("up", "down", "z", "r", None):
+        for key in ("up", "down", "z", None):
             controls.set_key(key, True)
         self.assertEqual(controls.held, set())
 
@@ -94,13 +94,14 @@ class InputTests(unittest.TestCase):
                 self.assertIs(controls.running, False)
                 self.assertEqual((player.state, player.facing), ("WALK", 1))
 
-    def test_r_is_ignored_with_and_without_direction(self):
+    def test_r_requests_restart_but_never_acts_as_run_key(self):
         for held in (set(), {"right"}):
             with self.subTest(held=held):
                 controls, player = Controls(held.copy()), Player()
                 controls.set_key("r", True)
                 player.update(0, controls)
-                self.assertEqual(controls.held, held)
+                self.assertEqual(controls.held, held | {"r"})
+                self.assertTrue(controls.restart_requested)
                 self.assertIs(controls.running, False)
                 self.assertEqual(player.state, "WALK" if held else "IDLE")
                 controls.set_key("r", False)

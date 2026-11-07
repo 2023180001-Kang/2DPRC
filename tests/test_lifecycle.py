@@ -181,6 +181,103 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.draw_health.call_args.kwargs, {})
         self.assert_images_released_before_close()
 
+    def test_restart_recreates_campaign_and_player_but_reuses_canvas_and_resources(self):
+        old_player = Player(health=0, state="DYING", weapon="dagger", hit_test_mode=True,
+                            hurt_time=0.5, hit_feedback_time=0.2, jump_count=2)
+        old_stage = Stage([Item("dagger", 500)], number=5, enemy=Enemy(state="DEAD"))
+        old_stage._items_by_stage[1] = []
+        new_player = Player()
+        new_stage = Stage([], enemy=Enemy(x=900))
+        controls_seen = []
+
+        def restart(controls):
+            controls_seen.append(controls)
+            for key in ("left", "lshift", "space", "f", "a", "h", "r"):
+                controls.set_key(key, True)
+            return True
+
+        self.poll_events.side_effect = restart
+        with (patch.object(main, "Player", side_effect=[old_player, new_player]) as players,
+              patch.object(main, "Stage", side_effect=[old_stage, new_stage]) as stages):
+            result = main.run(frame_limit=1)
+        self.assertEqual((players.call_count, stages.call_count, self.spawn_items.call_count), (2, 2, 2))
+        self.assertEqual(result["stage"], 1)
+        self.assertEqual(vars(new_player), vars(Player()))
+        self.assertEqual(new_stage.arrow_time, 0)
+        self.assertEqual(set(new_stage._items_by_stage), {1})
+        self.assertEqual(set(new_stage._enemies_by_stage), {1})
+        self.assertTrue(new_stage.enemy.alive)
+        controls = controls_seen[0]
+        self.assertEqual(controls.held, {"r", "h"})
+        for requested in ("jump_requested", "pickup_requested", "attack_requested",
+                          "restart_requested", "hit_test_requested"):
+            self.assertFalse(getattr(controls, requested))
+        self.open_canvas.assert_called_once()
+        self.load_images.assert_called_once()
+        self.assertTrue(self.set_title.call_args.args[1].endswith(b"OFF"))
+        self.assert_images_released_before_close()
+
+    def test_r_restarts_alive_immediately_once_per_fresh_press(self):
+        old_player = Player(health=10)
+        old_stage = Stage([], enemy=Enemy(x=704, state="ATTACK"))
+        tick = -1
+
+        def feed(controls):
+            nonlocal tick
+            tick += 1
+            if tick == 2:
+                controls.set_key("r", False)
+            controls.set_key("r", True)
+            return True
+
+        self.poll_events.side_effect = feed
+        with (patch.object(main, "Player", side_effect=[old_player, Player(), Player()]) as players,
+              patch.object(main, "Stage", side_effect=[old_stage, Stage([], enemy=Enemy(x=900)),
+                                                      Stage([], enemy=Enemy(x=900))])):
+            main.run(frame_limit=3)
+        self.assertEqual(players.call_count, 3)
+        drawn = [call.args[1] for call in self.draw_health.call_args_list]
+        self.assertIsNot(drawn[0], old_player)
+        self.assertIs(drawn[1], drawn[0])
+        self.assertIsNot(drawn[2], drawn[0])
+        self.assertEqual(old_player.health, 10)
+        self.assertEqual(drawn[0].health, 100)
+        self.assertEqual(drawn[2].health, 100)
+
+    def test_h_toggle_precedes_enemy_hit_and_requires_new_press_to_toggle_off(self):
+        player = Player(health=10)
+        stage = Stage([], enemy=Enemy(x=704, state="ATTACK"))
+        modes = []
+        tick = -1
+
+        def feed(controls):
+            nonlocal tick
+            tick += 1
+            if tick == 2:
+                controls.set_key("h", False)
+            controls.set_key("h", True)
+            return True
+
+        self.poll_events.side_effect = feed
+        self.draw_health.side_effect = lambda image, current: modes.append(current.hit_test_mode)
+        with (patch.object(main, "Player", return_value=player),
+              patch.object(main, "Stage", return_value=stage)):
+            main.run(frame_limit=3)
+        self.assertEqual(modes, [True, True, False])
+        self.assertEqual(player.health, 0)  # The next attack is lethal after switching OFF.
+        self.assertEqual(self.set_title.call_count, 3)
+        self.assertTrue(self.set_title.call_args_list[1].args[1].endswith(b"ON"))
+        self.assertTrue(self.set_title.call_args_list[2].args[1].endswith(b"OFF"))
+
+    def test_h_cannot_revive_or_enable_test_mode_after_death(self):
+        player = Player(health=0, state="DEAD")
+        self.poll_events.side_effect = lambda controls: (controls.set_key("h", True) or True)
+        with patch.object(main, "Player", return_value=player):
+            main.run(frame_limit=1)
+        self.assertFalse(player.hit_test_mode)
+        self.assertEqual((player.health, player.state), (0, "DEAD"))
+        self.set_title.assert_called_once()
+
     def test_drawing_traceback_retains_image_but_texture_is_released(self):
         def fail_drawing(image):
             raise RuntimeError("mock drawing failure")

@@ -34,6 +34,7 @@ RUN_SPEED = WALK_SPEED * 5
 MOVE_ACCELERATION = 1800.0
 MOVE_DECELERATION = 4500.0
 TURN_DECELERATION = 6000.0
+POST_KILL_TURN_DURATION = 0.5
 RUN_ANIMATION_REFERENCE_SPEED = 360.0
 GROUND_FRICTION = 900.0  # Constant sliding resistance, pixels/s^2.
 GROUND_DRAG = 4.0  # Speed-proportional ground resistance, 1/s.
@@ -62,7 +63,8 @@ WEAPON_HAND_OFFSETS = {
     "ATTACK": ((16, 71), (-11, 79), (48, 103), (68, 126), (74, 108), (35, 93), (9, 76), (15, 70)),
     "JUMP": ((18, 68), (-48, 73), (-52, 87), (-47, 81), (-52, 74), (-40, 67), (7, 46), (9, 48)),
 }
-WEAPON_CARRY_ANGLE = 90
+# Lean the weapon tip 20 degrees forward from vertical, mirrored with facing.
+WEAPON_CARRY_ANGLE = 70
 WEAPON_ATTACK_ANGLES = (90, 120, 65, 20, -10, 40, 75, 90)
 # Grip coordinates in the original item's image, normalized from bottom-left.
 WEAPON_GRIPS = {"dagger": (0.20, 0.50), "steel_pipe": (0.90, 0.35)}

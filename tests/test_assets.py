@@ -18,11 +18,14 @@ class AssetTests(unittest.TestCase):
         with (Image.open(ROOT / "assets/armed_character.png") as body,
               Image.open(ROOT / "assets/armed_character_right_hand.png") as fists):
             self.assertEqual(fists.size, body.size)
+            # The foreground must completely occlude the weapon, including
+            # the finger outline; the source artwork is slightly translucent.
+            self.assertEqual(sum(fists.getchannel("A").histogram()[1:255]), 0)
             for state, row in ARMED_ANIMATION_ROWS.items():
                 for frame, (hand_x, hand_y) in enumerate(WEAPON_HAND_OFFSETS[state]):
                     with self.subTest(state=state, frame=frame):
                         anchor = (frame * 256 + 128 + hand_x, row * 256 + 244 - hand_y)
-                        self.assertEqual(fists.getpixel(anchor), body.getpixel(anchor))
+                        self.assertEqual(fists.getpixel(anchor), (*body.getpixel(anchor)[:3], 255))
                         crop = fists.crop((frame * 256, row * 256, (frame + 1) * 256, (row + 1) * 256))
                         left, top, right, bottom = crop.getbbox()
                         self.assertLess(right - left, 32)

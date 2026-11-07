@@ -20,6 +20,7 @@ from settings import (
     ENEMY_ATTACK_START_RANGE, ENEMY_ATTACK_RANGE, ENEMY_ATTACK_HEIGHT_RANGE,
     ENEMY_ATTACK_FPS, ENEMY_ATTACK_DURATION, ENEMY_ATTACK_HIT_TIME, ENEMY_ATTACK_COOLDOWN,
     PLAYER_HURT_INVULNERABILITY,
+    POST_KILL_TURN_DURATION,
     PLAYER_DEATH_FPS, PLAYER_DEATH_FRAMES, PLAYER_DEATH_ROW,
 )
 
@@ -151,6 +152,8 @@ class Enemy:
                 and abs(player.foot_y - self.foot_y) <= ATTACK_HEIGHT_RANGE
                 and self.hit()):
             player.attack_hit = True
+            player.kill_turn_momentum = player.attack_momentum
+            player.kill_turn_time = POST_KILL_TURN_DURATION
             return True
         return False
 
@@ -347,6 +350,9 @@ class Player:
     hurt_time: float = 0.0
     death_kind: str = "BACKWARD"
     death_time: float = 0.0
+    attack_momentum: float = 0.0
+    kill_turn_momentum: float = 0.0
+    kill_turn_time: float = 0.0
 
     @property
     def incapacitated(self):
@@ -459,8 +465,15 @@ class Player:
         self.boundary_speed = 0.0
         if not controls.focused:
             self.horizontal_speed = 0.0
+            self.attack_momentum = self.kill_turn_momentum = self.kill_turn_time = 0.0
             return 0.0, False
         target = controls.direction * (RUN_SPEED if controls.running else WALK_SPEED)
+        if self.kill_turn_time > 0 and target * self.kill_turn_momentum < 0:
+            # A kill may leave the player pressed against an expanding body.
+            # Turn once at the attack's speed, rather than accelerating from 0.
+            speed = max(abs(self.kill_turn_momentum), abs(self.horizontal_speed))
+            self.horizontal_speed = controls.direction * min(speed, abs(target))
+            self.kill_turn_momentum = self.kill_turn_time = 0.0
         distance = travel = 0.0
         if target == 0:
             # Keep momentum in the air, then apply floor friction only for the
@@ -481,6 +494,8 @@ class Player:
             self.horizontal_speed, remaining_distance = _integrate_speed(self.horizontal_speed, target, rate, dt)
             distance += remaining_distance
             travel += abs(remaining_distance)
+        if self.attacking and not self.attack_hit and abs(self.horizontal_speed) > abs(self.attack_momentum):
+            self.attack_momentum = self.horizontal_speed
         self.x = max(PLAYER_HALF_WIDTH, min(WIDTH - PLAYER_HALF_WIDTH, self.x + distance))
         blocked = ((self.x <= PLAYER_HALF_WIDTH and self.horizontal_speed < 0)
                    or (self.x >= WIDTH - PLAYER_HALF_WIDTH and self.horizontal_speed > 0))
@@ -524,6 +539,9 @@ class Player:
                 blocked = True
             elif abs(self.x - right) <= 1e-8 and direction < 0:
                 blocked = True
+        if blocked and self.horizontal_speed * (self.x - obstacle.x) > 0:
+            # Depenetration while escaping is not an impact into the body.
+            blocked = False
         if blocked:
             self.horizontal_speed = self.boundary_speed = 0.0
         if self.support_y > GROUND_Y and not (
@@ -542,6 +560,9 @@ class Player:
                 self._start_death()
             self._update_death(dt)
             return False
+        self.kill_turn_time = max(0.0, self.kill_turn_time - dt)
+        if self.kill_turn_time <= 1e-9:
+            self.kill_turn_momentum = self.kill_turn_time = 0.0
         attack_started = False
         if self.attack_time is not None:
             self.attack_time += dt
@@ -551,6 +572,7 @@ class Player:
         elif controls.attack_requested:
             self.attack_time = 0.0
             self.attack_hit = False
+            self.attack_momentum = self.horizontal_speed
             attack_started = True
         controls.attack_requested = False
 

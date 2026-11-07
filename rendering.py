@@ -117,6 +117,6 @@ def draw_held_weapon(images, player):
     x = max(half_extent, min(WIDTH - half_extent, x))
     flip = (player.facing < 0) != (player.weapon == "steel_pipe")
     image.composite_draw(angle * player.facing, "h" if flip else "", x, y, width, height)
-    # Only the extracted fist is redrawn: the blade remains in front of the
-    # body while the fingers cover the grip, rather than being hidden by it.
+    # The opaque fist and finger outline fully hide the grip underneath the
+    # hand while leaving the exposed weapon in front of the body.
     draw_character(images["right_hand"], player)

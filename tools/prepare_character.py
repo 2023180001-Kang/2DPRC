@@ -4,7 +4,7 @@ import argparse
 from itertools import groupby
 from pathlib import Path
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 from settings import (
     ARMED_ANIMATION_ROWS, ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE, CHARACTER_FRAME_ROWS,
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def prepare_right_hand_overlay(sheet, output):
-    """Extract each right fist's skin and one-pixel edge for foreground grips."""
+    """Extract an opaque right fist and its outline to occlude held weapons."""
     overlay = Image.new("RGBA", sheet.size)
     for state, row in ARMED_ANIMATION_ROWS.items():
         for column, (hand_x, hand_y) in enumerate(WEAPON_HAND_OFFSETS[state]):
@@ -42,9 +42,14 @@ def prepare_right_hand_overlay(sheet, output):
             mask = Image.new("L", (FRAME_WIDTH, FRAME_HEIGHT))
             for x, y in seen:
                 mask.putpixel((x - origin_x, y - origin_y), 255)
-            mask = mask.filter(ImageFilter.MaxFilter(3))
+            # Include the dark outline around the fingers, not just the skin.
+            # A thin/partly transparent overlay lets the pipe show through.
+            mask = mask.filter(ImageFilter.MaxFilter(7))
             box = (origin_x, origin_y, origin_x + FRAME_WIDTH, origin_y + FRAME_HEIGHT)
-            overlay.paste(sheet.crop(box), (origin_x, origin_y), mask)
+            fist = sheet.crop(box)
+            visible = fist.getchannel("A").point(lambda alpha: 255 if alpha >= 128 else 0)
+            fist.putalpha(ImageChops.multiply(mask, visible))
+            overlay.paste(fist, (origin_x, origin_y), fist.getchannel("A"))
     overlay.save(output)
 
 

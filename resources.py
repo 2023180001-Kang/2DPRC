@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent
 IMAGE_FILES = {
     "background": "chapter1-1 map.png", "character": "assets/character.png",
     "health_bar": "HoodMan_HP바_투명배경_pico2d.png",
-    "dagger": "dagger_item_pico2d.png", "steel_pipe": "steel_pipe_item_pico2d.png",
+    "dagger": "hoodman_dark_dagger_pico2d.png", "steel_pipe": "hoodman_dark_steel_pipe_pico2d.png",
     "second_background": "chapter1-2 map.png",
     "arrow_left": "arrow_left_yellow.png", "arrow_right": "arrow_right_yellow.png",
     "armed_character": "assets/armed_character.png",

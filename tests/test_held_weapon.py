@@ -36,7 +36,7 @@ class HeldWeaponTests(unittest.TestCase):
                             angle, flip, x, y, w, h = image.composite_draw.call_args.args
                             hand_x, hand_y = WEAPON_HAND_OFFSETS[state][frame]
                             expected_flip = (facing < 0) != (kind == "steel_pipe")
-                            self.assertAlmostEqual(angle, facing * math.pi / 2)
+                            self.assertAlmostEqual(angle, facing * math.radians(70))
                             self.assertEqual(flip, "h" if expected_flip else "")
                             grip_x, grip_y = WEAPON_GRIPS[kind]
                             local_x = (grip_x - 0.5) * w * (-1 if flip else 1)
@@ -90,13 +90,16 @@ class HeldWeaponTests(unittest.TestCase):
                 self.assertEqual((player.weapon, player.frame, player.jump_count), (kind, 0, 2))
                 image = Mock(w=900, h=300)
                 draw_held_weapon({kind: image, "right_hand": Mock(h=1280)}, player)
-                _, _, x, y, width, image_height = image.composite_draw.call_args.args
+                angle, _, x, y, width, image_height = image.composite_draw.call_args.args
                 hand_x, hand_y = WEAPON_HAND_OFFSETS["JUMP"][0]
                 grip_x, grip_y = WEAPON_GRIPS[kind]
                 if kind == "steel_pipe":
                     grip_x = 1 - grip_x
-                self.assertAlmostEqual(x, player.x + hand_x * CHARACTER_SCALE - (0.5 - grip_y) * image_height)
-                self.assertAlmostEqual(y, height + hand_y * CHARACTER_SCALE + (0.5 - grip_x) * width)
+                dx, dy = (0.5 - grip_x) * width, (0.5 - grip_y) * image_height
+                self.assertAlmostEqual(x, player.x + hand_x * CHARACTER_SCALE
+                                       + math.cos(angle) * dx - math.sin(angle) * dy)
+                self.assertAlmostEqual(y, height + hand_y * CHARACTER_SCALE
+                                       + math.sin(angle) * dx + math.cos(angle) * dy)
                 player.update(JUMP_DURATION / 2, controls)
                 self.assertAlmostEqual(player.foot_y - GROUND_Y, 384)
                 self.assertEqual(player.weapon, kind)

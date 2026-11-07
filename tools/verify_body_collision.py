@@ -60,7 +60,7 @@ def verify(output):
             keys(up=("space",))
             assert player.jump_count == 2
             if player.x > right + 20:
-                assert enemy.state == "IDLE" and stage.visible_arrows == ()
+                assert enemy.alive and stage.visible_arrows == ()
                 keys(down=("left",), up=("right", "lshift"))
                 change("brake_live", "live-jump-cleared")
         elif phase == "brake_live" and player.horizontal_speed <= 0:
@@ -148,7 +148,9 @@ def verify(output):
             screenshots.append(filename)
             pending_shot = None
 
-    with (patch("main.Player", return_value=player), patch("main.Stage", return_value=stage),
+    # Keep this obstacle course stationary; verify_enemy_ai covers live pursuit.
+    with (patch.object(enemy, "update", side_effect=lambda dt, player=None: Enemy.update(enemy, dt)),
+          patch("main.Player", return_value=player), patch("main.Stage", return_value=stage),
           patch("main.poll_events", side_effect=feed), patch("main.perf_counter", side_effect=lambda: clock),
           patch("main.sleep"), patch("main.draw_health", side_effect=observe)):
         result = main.run(frame_limit=810)

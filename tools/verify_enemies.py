@@ -13,7 +13,7 @@ from events import poll_events
 from game import Enemy, Player, Stage, spawn_enemy
 from rendering import draw_enemy, draw_health
 from resources import ROOT, load_images, release_images
-from settings import ARROW_X, ATTACK_RANGE, ENEMY_DEATH_FPS, WIDTH
+from settings import ARROW_X, ATTACK_RANGE, ENEMY_CHASE_FPS, ENEMY_DEATH_FPS, WIDTH
 from tools.verify_runtime import capture, push
 
 
@@ -22,14 +22,17 @@ def verify_gallery(output):
     core.window = core.renderer = None
     core.audio_on = False
     try:
-        pico2d.open_canvas(WIDTH, 420, sync=True)
+        pico2d.open_canvas(WIDTH, 620, sync=True)
         pico2d.hide_lattice()
         images = load_images()
         for facing in (1, -1):
             pico2d.clear_canvas()
             for frame in range(8):
+                draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=440,
+                                                 facing=facing, animation_time=frame / 6))
                 draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=240,
-                                                facing=facing, animation_time=frame / 6))
+                                                 facing=facing, state="CHASE",
+                                                 animation_time=frame / ENEMY_CHASE_FPS))
                 draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=40,
                                                 facing=facing, state="DYING",
                                                 animation_time=frame / ENEMY_DEATH_FPS))
@@ -99,14 +102,16 @@ def verify_encounters(output):
         stage = stages[0]
         assert directions == stage.visible_arrows
         if tick in expected:
-            assert (number, stage.enemy.state, directions) == expected[tick], (tick, number, vars(stage.enemy), directions)
+            expected_number, expected_state, expected_directions = expected[tick]
+            assert (number, directions) == (expected_number, expected_directions)
+            assert stage.enemy.alive if expected_state == "IDLE" else stage.enemy.state == expected_state
         if tick == 69:
             assert stage.enemy.frame == 7 and not stage.enemy.defeated
         draw_arrows(images, number, elapsed, directions=directions)
 
     def observe_enemy(image, enemy):
         draw_enemy(image, enemy)
-        assert image.h == 1024 and enemy.row in (0, 3)
+        assert image.h == 1024 and enemy.row in (0, 1, 3)
         stage = stages[0]
         records.append({"tick": tick, "stage": stage.number, "x": enemy.x,
                         "state": enemy.state, "frame": enemy.frame,
@@ -135,7 +140,10 @@ def verify_encounters(output):
     assert records[90]["stage"] == 1 and records[100]["stage"] == 2
     second_before_return = records[89]["animation_time"] + 1 / 60
     assert abs(records[100]["animation_time"] - second_before_return) < 1e-8
-    assert all(record["x"] == spawned[record["stage"] - 1][1].x for record in records)
+    for number in (1, 2):
+        # Chasing can change x before the hit; dying/dead positions stay fixed.
+        assert len({record["x"] for record in records
+                    if record["stage"] == number and record["state"] in ("DYING", "DEAD")}) == 1
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"frames": result["frames"], "fixed_dt": 1 / 60, "spawned_per_map": {"1": 1, "2": 1},
             "live_and_dying_exit_blocked": "PASS", "unlock_after_full_death": "PASS",
@@ -179,7 +187,7 @@ def verify_running_attacks(output):
                 draw_health(image, current)
                 checkpoint = None
                 if tick == attack_tick:
-                    assert enemy.state == "IDLE" and current.attacking
+                    assert enemy.alive and current.attacking
                     assert facing * (enemy.x - current.x) > ATTACK_RANGE
                     checkpoint = "started-outside-range"
                 if enemy.state == "DYING" and hit_tick is None:

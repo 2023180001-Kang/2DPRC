@@ -42,7 +42,7 @@ def run(frame_limit=None):
             running = poll_events(controls)
             if not running:
                 break
-            stage.update(dt)
+            stage.update(dt, player)
             player.pick_up(stage.items, controls)
             player.update(dt, controls, stage.enemy)
             stage.try_transition(player, controls)

@@ -15,6 +15,8 @@ from settings import (
     AIR_DRAG, GROUND_DRAG, GROUND_FRICTION,
     COLLISION_STEP, CORPSE_HALF_WIDTH, CORPSE_HEIGHT, ENEMY_BODY_HALF_WIDTH, ENEMY_BODY_HEIGHT,
     PLAYER_BODY_HALF_WIDTH, PLAYER_BODY_HEIGHT,
+    ENEMY_CHASE_FPS, ENEMY_CHASE_SPEED, ENEMY_DETECTION_RANGE, ENEMY_LOSE_RANGE,
+    ENEMY_SCALE, ENEMY_STOP_DISTANCE, FRAME_WIDTH,
 )
 
 
@@ -94,6 +96,11 @@ class Enemy:
     facing: int = -1
     state: str = "IDLE"
     animation_time: float = 0.0
+    aware: bool = False
+
+    @property
+    def alive(self):
+        return self.state in {"IDLE", "CHASE"}
 
     @property
     def defeated(self):
@@ -101,7 +108,7 @@ class Enemy:
 
     @property
     def row(self):
-        return 0 if self.state == "IDLE" else 3
+        return {"IDLE": 0, "CHASE": 1}.get(self.state, 3)
 
     @property
     def collision_bounds(self):
@@ -115,14 +122,16 @@ class Enemy:
     def frame(self):
         if self.defeated:
             return FRAME_COUNT - 1
-        if self.state == "IDLE":
-            return int(self.animation_time * ENEMY_IDLE_FPS + 1e-9) % FRAME_COUNT
+        if self.alive:
+            fps = ENEMY_CHASE_FPS if self.state == "CHASE" else ENEMY_IDLE_FPS
+            return int(self.animation_time * fps + 1e-9) % FRAME_COUNT
         return min(int(self.animation_time * ENEMY_DEATH_FPS + 1e-9), FRAME_COUNT - 1)
 
     def hit(self):
-        if self.state != "IDLE":
+        if not self.alive:
             return False
         self.state, self.animation_time = "DYING", 0.0
+        self.aware = False
         return True
 
     def try_hit(self, player):
@@ -137,9 +146,30 @@ class Enemy:
             return True
         return False
 
-    def update(self, dt):
-        if self.state == "IDLE":
-            self.animation_time = (self.animation_time + dt) % (FRAME_COUNT / ENEMY_IDLE_FPS)
+    def update(self, dt, player=None):
+        if self.alive:
+            previous_state = self.state
+            next_state = "IDLE"
+            if player is not None:
+                dx = player.x - self.x
+                distance = abs(dx)
+                detection_range = ENEMY_LOSE_RANGE if self.aware else ENEMY_DETECTION_RANGE
+                self.aware = distance <= detection_range
+                if self.aware and dx != 0:
+                    self.facing = 1 if dx > 0 else -1
+                    remaining = max(0.0, distance - ENEMY_STOP_DISTANCE)
+                    half_width = FRAME_WIDTH * ENEMY_SCALE / 2
+                    room = WIDTH - half_width - self.x if self.facing > 0 else self.x - half_width
+                    travel = min(ENEMY_CHASE_SPEED * dt, remaining, max(0.0, room))
+                    self.x += self.facing * travel
+                    if remaining - travel > 1e-9 and room - travel > 1e-9:
+                        next_state = "CHASE"
+            else:
+                self.aware = False
+            self.state = next_state
+            fps = ENEMY_CHASE_FPS if self.state == "CHASE" else ENEMY_IDLE_FPS
+            self.animation_time = ((self.animation_time + dt) % (FRAME_COUNT / fps)
+                                   if previous_state == self.state else 0.0)
         elif self.state == "DYING":
             self.animation_time = min(self.animation_time + dt, ENEMY_DEATH_DURATION)
             if self.animation_time >= ENEMY_DEATH_DURATION - 1e-9:
@@ -220,11 +250,11 @@ class Stage:
     def hit_enemy(self, player):
         return self.enemy.try_hit(player)
 
-    def update(self, dt):
+    def update(self, dt, player=None):
         self.arrow_time = (self.arrow_time + dt) % ARROW_SWAY_PERIOD
         for index, item in enumerate(self.items):
             self.items[index] = item.update(dt)
-        self.enemy.update(dt)
+        self.enemy.update(dt, player)
 
     def try_transition(self, player, controls, rng=None):
         direction = next((direction for direction in self.visible_arrows

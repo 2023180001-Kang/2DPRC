@@ -20,6 +20,7 @@ from settings import (
     ENEMY_ATTACK_START_RANGE, ENEMY_ATTACK_RANGE, ENEMY_ATTACK_HEIGHT_RANGE,
     ENEMY_ATTACK_FPS, ENEMY_ATTACK_DURATION, ENEMY_ATTACK_HIT_TIME, ENEMY_ATTACK_COOLDOWN,
     PLAYER_HURT_INVULNERABILITY,
+    PLAYER_DEATH_FPS, PLAYER_DEATH_FRAMES, PLAYER_DEATH_ROW,
 )
 
 
@@ -162,7 +163,7 @@ class Enemy:
                 distance = self.facing * (player.x - self.x)
                 if (0 <= distance <= ENEMY_ATTACK_RANGE
                         and abs(player.foot_y - self.foot_y) <= ENEMY_ATTACK_HEIGHT_RANGE):
-                    player.take_damage()
+                    player.take_damage(source_x=self.x)
         if self.animation_time >= ENEMY_ATTACK_DURATION - 1e-9:
             self.state, self.animation_time = "IDLE", 0.0
             self.attack_cooldown = ENEMY_ATTACK_COOLDOWN
@@ -290,6 +291,8 @@ class Stage:
         self.enemy.update(dt, player)
 
     def try_transition(self, player, controls, rng=None):
+        if player.incapacitated:
+            return False
         direction = next((direction for direction in self.visible_arrows
                           if abs(player.x - ARROW_X[direction]) <= ARROW_TRIGGER_HALF_WIDTH), 0)
         destination = self.number + direction
@@ -342,12 +345,43 @@ class Player:
     boundary_speed: float = 0.0
     support_y: float = GROUND_Y
     hurt_time: float = 0.0
+    death_kind: str = "BACKWARD"
+    death_time: float = 0.0
 
-    def take_damage(self, amount=1):
+    @property
+    def incapacitated(self):
+        return self.health <= 0
+
+    @property
+    def death_duration(self):
+        return len(PLAYER_DEATH_FRAMES[self.death_kind]) / PLAYER_DEATH_FPS
+
+    def _start_death(self, source_x=None):
+        self.death_kind = ("FORWARD" if source_x is not None
+                           and self.facing * (source_x - self.x) < 0 else "BACKWARD")
+        self.state, self.death_time = "DYING", 0.0
+        self.attack_time = None
+        self.horizontal_speed = self.boundary_speed = 0.0
+        self.vertical_speed = min(0.0, self.vertical_speed)
+        self.support_y = GROUND_Y
+
+    def _update_death(self, dt):
+        if self.foot_y > GROUND_Y:
+            self.foot_y += self.vertical_speed * dt - 0.5 * GRAVITY * dt * dt
+            self.vertical_speed -= GRAVITY * dt
+        if self.foot_y <= GROUND_Y:
+            self.foot_y, self.vertical_speed = GROUND_Y, 0.0
+        self.death_time = min(self.death_time + dt, self.death_duration)
+        if self.death_time >= self.death_duration - 1e-9 and self.foot_y == GROUND_Y:
+            self.death_time, self.state = self.death_duration, "DEAD"
+
+    def take_damage(self, amount=1, *, source_x=None):
         if self.health <= 0 or self.hurt_time > 1e-9 or amount <= 0:
             return False
         self.health = max(0, self.health - amount)
         self.hurt_time = PLAYER_HURT_INVULNERABILITY
+        if self.incapacitated:
+            self._start_death(source_x)
         return True
 
     def update_damage(self, dt):
@@ -359,6 +393,9 @@ class Player:
 
     @property
     def frame(self):
+        if self.incapacitated:
+            frames = PLAYER_DEATH_FRAMES[self.death_kind]
+            return frames[min(int(self.death_time * PLAYER_DEATH_FPS + 1e-9), len(frames) - 1)]
         if self.attacking:
             return min(int(self.attack_time * ATTACK_FPS + 1e-9), FRAME_COUNT - 1)
         frame = int(self.animation_time * ANIMATIONS[self.state][1] + 1e-9)
@@ -366,25 +403,31 @@ class Player:
 
     @property
     def row(self):
+        if self.incapacitated:
+            return PLAYER_DEATH_ROW
         if self.weapon is not None or self.attacking:
             return ARMED_ANIMATION_ROWS[self.display_state]
         return ANIMATIONS[self.state][0]
 
     @property
     def attacking(self):
-        return self.attack_time is not None
+        return self.attack_time is not None and not self.incapacitated
 
     @property
     def display_state(self):
+        if self.incapacitated:
+            return "DEAD" if self.state == "DEAD" else "DYING"
         return "ATTACK" if self.attacking else self.state
 
     @property
     def character_key(self):
+        if self.incapacitated:
+            return "character"
         return "armed_character" if self.weapon is not None or self.attacking else "character"
 
     def pickup_target(self, items):
         """Share the ground/range/nearest-item rule with the interaction hint."""
-        if not self.grounded:
+        if self.incapacitated or not self.grounded:
             return None
         distance, index = min(
             (((item.x - self.x) ** 2 + (item.foot_y - self.foot_y) ** 2, index)
@@ -397,7 +440,7 @@ class Player:
         """Pick up/swap on the ground, or drop a held weapon on the ground or in the air."""
         requested = controls.pickup_requested
         controls.pickup_requested = False
-        if not requested:
+        if self.incapacitated or not requested:
             return False
         index = self.pickup_target(items)
         previous = self.weapon
@@ -493,6 +536,12 @@ class Player:
         return landed, blocked
 
     def update(self, dt, controls, obstacle=None):
+        if self.incapacitated:
+            controls.jump_requested = controls.pickup_requested = controls.attack_requested = False
+            if self.state not in {"DYING", "DEAD"}:
+                self._start_death()
+            self._update_death(dt)
+            return False
         attack_started = False
         if self.attack_time is not None:
             self.attack_time += dt

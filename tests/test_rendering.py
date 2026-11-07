@@ -7,7 +7,7 @@ from game import Player
 from rendering import draw_background, draw_character
 from resources import IMAGE_FILES, ROOT
 from settings import (
-    ANIMATIONS, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_ROWS,
+    ANIMATIONS, CHARACTER_FRAME_ROWS, CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT,
     FRAME_WIDTH, HEIGHT, WIDTH,
 )
 
@@ -35,30 +35,30 @@ class RenderingTests(unittest.TestCase):
         self.assertGreaterEqual(height, HEIGHT)
 
     def test_all_frames_clip_inside_sheet(self):
-        image = Mock(h=FRAME_HEIGHT * FRAME_ROWS)
+        image = Mock(h=FRAME_HEIGHT * CHARACTER_FRAME_ROWS)
         for state, (row, fps) in ANIMATIONS.items():
             for frame in range(8):
                 player = Player(state=state)
                 player.animation_time = frame / fps
                 draw_character(image, player)
                 args = image.clip_composite_draw.call_args.args
-                self.assertEqual(args[:4], (frame * FRAME_WIDTH, (FRAME_ROWS - 1 - row) * FRAME_HEIGHT,
+                self.assertEqual(args[:4], (frame * FRAME_WIDTH, (CHARACTER_FRAME_ROWS - 1 - row) * FRAME_HEIGHT,
                                             FRAME_WIDTH, FRAME_HEIGHT))
 
     def test_clip_draw_has_explicit_destination_size(self):
-        image = Mock(h=FRAME_HEIGHT * FRAME_ROWS)
+        image = Mock(h=FRAME_HEIGHT * CHARACTER_FRAME_ROWS)
         draw_character(image, Player())
         self.assertEqual(image.clip_composite_draw.call_args.args[8:],
                          (FRAME_WIDTH * CHARACTER_SCALE, FRAME_HEIGHT * CHARACTER_SCALE))
 
     def test_facing_controls_horizontal_flip(self):
-        image = Mock(h=FRAME_HEIGHT * FRAME_ROWS)
+        image = Mock(h=FRAME_HEIGHT * CHARACTER_FRAME_ROWS)
         for facing, flip in ((1, ""), (-1, "h")):
             draw_character(image, Player(facing=facing))
             self.assertEqual(image.clip_composite_draw.call_args.args[5], flip)
 
     def test_foot_anchor_matches_frame_padding(self):
-        image = Mock(h=FRAME_HEIGHT * FRAME_ROWS)
+        image = Mock(h=FRAME_HEIGHT * CHARACTER_FRAME_ROWS)
         player = Player()
         draw_character(image, player)
         center_y = image.clip_composite_draw.call_args.args[7]

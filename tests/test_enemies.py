@@ -255,7 +255,7 @@ class EnemyTests(unittest.TestCase):
         original_hash = hashlib.sha256(source.read_bytes()).digest()
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "enemy.png"
-            prepare(source, output)
+            prepare(source, output, rows=4)
             self.assertEqual(output.read_bytes(), (ROOT / "assets/enemy.png").read_bytes())
             with Image.open(output) as sheet:
                 self.assertEqual(sheet.size, (2048, 1024))

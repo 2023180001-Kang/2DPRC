@@ -98,7 +98,7 @@ def draw_pickup_hint(images, items, player):
 
 
 def draw_held_weapon(images, player):
-    if player.weapon is None:
+    if player.weapon is None or player.incapacitated:
         return
     image = images[player.weapon]
     width = ITEM_WIDTHS[player.weapon]

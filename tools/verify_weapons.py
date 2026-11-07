@@ -109,7 +109,7 @@ def verify_gameplay(output):
 
     def observe(image, current):
         draw_character(image, current)
-        assert image.h == (1280 if current.character_key == "armed_character" else 1024)
+        assert image.h == 1280
         if tick in checkpoints:
             assert (current.weapon, current.display_state) == checkpoints[tick], (tick, vars(current))
         if tick == 128:

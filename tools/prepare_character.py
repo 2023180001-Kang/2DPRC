@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageFilter
 
 from settings import (
-    ARMED_ANIMATION_ROWS, ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE,
+    ARMED_ANIMATION_ROWS, ARMED_CHARACTER_SOURCE, ARMED_FRAME_ROWS, CHARACTER_SOURCE, CHARACTER_FRAME_ROWS,
     FRAME_BOTTOM_PADDING, FRAME_COUNT, FRAME_HEIGHT, FRAME_ROWS, FRAME_WIDTH, WEAPON_HAND_OFFSETS,
 )
 
@@ -49,7 +49,7 @@ def prepare_right_hand_overlay(sheet, output):
 
 
 def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png", preview=False,
-            rows=FRAME_ROWS):
+            rows=CHARACTER_FRAME_ROWS, hand_overlay=False):
     with Image.open(source) as original:
         sheet = original.convert("RGBA")
     if sheet.size != (FRAME_COUNT * FRAME_WIDTH, rows * FRAME_HEIGHT):
@@ -59,10 +59,9 @@ def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png"
     width, height = FRAME_WIDTH, FRAME_HEIGHT
     source_sheet = sheet.copy()
     bands = {}
-    if rows == ARMED_FRAME_ROWS:
-        # Some jump hoods cross the nominal row boundary in the supplied art.
-        # Separate the five silhouettes by transparent horizontal gaps instead
-        # of cutting those heads (or including them in the attack frame).
+    if rows > FRAME_ROWS:
+        # Split five-row player sheets at transparent gaps so jump hoods
+        # crossing a nominal row boundary remain in their own silhouette.
         for column in range(FRAME_COUNT):
             alpha = source_sheet.crop((column * width, 0, (column + 1) * width, sheet.height)).getchannel("A")
             alpha = alpha.point(lambda value: 255 if value >= 128 else 0)
@@ -94,7 +93,7 @@ def prepare(source=ROOT / CHARACTER_SOURCE, output=ROOT / "assets/character.png"
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output)
-    if rows == ARMED_FRAME_ROWS:
+    if hand_overlay:
         prepare_right_hand_overlay(sheet, output.with_name(f"{output.stem}_right_hand.png"))
     print(f"Prepared {output}: {sheet.width}x{sheet.height}, cells {width}x{height}")
     if preview:
@@ -112,6 +111,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.armed:
         prepare(ROOT / ARMED_CHARACTER_SOURCE, ROOT / "assets/armed_character.png",
-                preview=args.preview, rows=ARMED_FRAME_ROWS)
+                preview=args.preview, rows=ARMED_FRAME_ROWS, hand_overlay=True)
     else:
         prepare(preview=args.preview)

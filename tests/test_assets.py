@@ -48,7 +48,7 @@ class AssetTests(unittest.TestCase):
         original_hash = hashlib.sha256(source.read_bytes()).digest()
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "armed_character.png"
-            prepare(source, output, rows=ARMED_FRAME_ROWS)
+            prepare(source, output, rows=ARMED_FRAME_ROWS, hand_overlay=True)
             self.assertEqual(output.read_bytes(), (ROOT / "assets/armed_character.png").read_bytes())
             self.assertEqual(output.with_name("armed_character_right_hand.png").read_bytes(),
                              (ROOT / "assets/armed_character_right_hand.png").read_bytes())
@@ -67,7 +67,7 @@ class AssetTests(unittest.TestCase):
 
     def test_all_frames_have_stable_visible_bounds(self):
         with Image.open(ROOT / "assets/character.png") as sheet:
-            self.assertEqual(sheet.size, (2048, 1024))
+            self.assertEqual(sheet.size, (2048, 1280))
             for row in range(FRAME_ROWS):
                 for column in range(8):
                     with self.subTest(row=row, column=column):

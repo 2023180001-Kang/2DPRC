@@ -13,7 +13,7 @@ from events import poll_events
 from game import Enemy, Player, Stage, spawn_enemy
 from rendering import draw_enemy, draw_health
 from resources import ROOT, load_images, release_images
-from settings import ARROW_X, ATTACK_RANGE, ENEMY_CHASE_FPS, ENEMY_DEATH_FPS, WIDTH
+from settings import ARROW_X, ATTACK_RANGE, ENEMY_ATTACK_FPS, ENEMY_CHASE_FPS, ENEMY_DEATH_FPS, WIDTH
 from tools.verify_runtime import capture, push
 
 
@@ -22,17 +22,20 @@ def verify_gallery(output):
     core.window = core.renderer = None
     core.audio_on = False
     try:
-        pico2d.open_canvas(WIDTH, 620, sync=True)
+        pico2d.open_canvas(WIDTH, 820, sync=True)
         pico2d.hide_lattice()
         images = load_images()
         for facing in (1, -1):
             pico2d.clear_canvas()
             for frame in range(8):
-                draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=440,
+                draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=640,
                                                  facing=facing, animation_time=frame / 6))
-                draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=240,
+                draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=440,
                                                  facing=facing, state="CHASE",
                                                  animation_time=frame / ENEMY_CHASE_FPS))
+                draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=240,
+                                                 facing=facing, state="ATTACK",
+                                                 animation_time=frame / ENEMY_ATTACK_FPS))
                 draw_enemy(images["enemy"], Enemy(x=80 + frame * 160, foot_y=40,
                                                 facing=facing, state="DYING",
                                                 animation_time=frame / ENEMY_DEATH_FPS))
@@ -111,7 +114,7 @@ def verify_encounters(output):
 
     def observe_enemy(image, enemy):
         draw_enemy(image, enemy)
-        assert image.h == 1024 and enemy.row in (0, 1, 3)
+        assert image.h == 1024 and enemy.row in (0, 1, 2, 3)
         stage = stages[0]
         records.append({"tick": tick, "stage": stage.number, "x": enemy.x,
                         "state": enemy.state, "frame": enemy.frame,

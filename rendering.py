@@ -9,7 +9,7 @@ from settings import (
     CHARACTER_SCALE, FRAME_BOTTOM_PADDING, FRAME_HEIGHT, FRAME_WIDTH, GROUND_Y,
     HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, ITEM_WIDTHS, PICKUP_HINT_GAP, PICKUP_HINT_SIZE,
     STAGE_ARROWS, WEAPON_ATTACK_ANGLES, WEAPON_CARRY_ANGLE, WEAPON_GRIPS, WEAPON_HAND_OFFSETS, WIDTH,
-    ENEMY_SCALE,
+    ENEMY_SCALE, HEALTH_FILL_BOUNDS, MAX_HEALTH,
 )
 
 
@@ -48,10 +48,18 @@ def draw_enemy(image, enemy):
 
 
 def draw_health(image, player):
-    """Draw the supplied 100% HP artwork; damage and healing are not implemented yet."""
+    """Keep the portrait/frame and empty the blue gauge from right to left."""
     height = HEALTH_BAR_WIDTH * image.h / image.w
     image.draw(HUD_MARGIN + HEALTH_BAR_WIDTH / 2,
                HEIGHT - HUD_MARGIN - height / 2, HEALTH_BAR_WIDTH, height)
+    ratio = max(0.0, min(1.0, player.health / MAX_HEALTH))
+    if ratio < 1.0:
+        left, top, right, bottom = HEALTH_FILL_BOUNDS
+        scale = HEALTH_BAR_WIDTH / image.w
+        draw_rectangle(HUD_MARGIN + (left + (right - left) * ratio) * scale,
+                       HEIGHT - HUD_MARGIN - bottom * scale,
+                       HUD_MARGIN + right * scale, HEIGHT - HUD_MARGIN - top * scale,
+                       3, 7, 15, filled=True)
 
 
 def _draw_item(image, item):

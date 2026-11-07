@@ -19,7 +19,8 @@ from tools.verify_runtime import capture, push
 
 def verify(output):
     player = Player(x=128)
-    first, second = Enemy(x=1000), Enemy(x=600)
+    # Exercise pursuit independently while the attack cooldown is active.
+    first, second = Enemy(x=1000, attack_cooldown=1000), Enemy(x=600, attack_cooldown=1000)
     stage = Stage([], enemy=first)
     tick, clock, phase, phase_tick = -1, 0.0, "outside", 0
     pending_shot = "outside-detection"
@@ -179,7 +180,7 @@ def verify(output):
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"frames": result["frames"], "fixed_dt": 1 / 60,
             "detection_range": ENEMY_DETECTION_RANGE, "lose_range": ENEMY_LOSE_RANGE,
-            "detection_chase_stop_turn_loss_reacquire": "PASS", "no_enemy_attack_or_damage": "PASS",
+            "detection_chase_stop_turn_loss_reacquire": "PASS", "no_contact_damage_during_cooldown": "PASS",
             "hit_stops_chase_and_death_unlocks": "PASS", "off_map_pause_and_revisit": "PASS",
             "checkpoints": checkpoints, "screenshots": shots, "records": records}
 

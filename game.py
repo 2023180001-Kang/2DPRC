@@ -17,6 +17,9 @@ from settings import (
     PLAYER_BODY_HALF_WIDTH, PLAYER_BODY_HEIGHT,
     ENEMY_CHASE_FPS, ENEMY_CHASE_SPEED, ENEMY_DETECTION_RANGE, ENEMY_LOSE_RANGE,
     ENEMY_SCALE, ENEMY_STOP_DISTANCE, FRAME_WIDTH,
+    ENEMY_ATTACK_START_RANGE, ENEMY_ATTACK_RANGE, ENEMY_ATTACK_HEIGHT_RANGE,
+    ENEMY_ATTACK_FPS, ENEMY_ATTACK_DURATION, ENEMY_ATTACK_HIT_TIME, ENEMY_ATTACK_COOLDOWN,
+    PLAYER_HURT_INVULNERABILITY,
 )
 
 
@@ -97,10 +100,12 @@ class Enemy:
     state: str = "IDLE"
     animation_time: float = 0.0
     aware: bool = False
+    attack_cooldown: float = 0.0
+    attack_hit: bool = False
 
     @property
     def alive(self):
-        return self.state in {"IDLE", "CHASE"}
+        return self.state in {"IDLE", "CHASE", "ATTACK"}
 
     @property
     def defeated(self):
@@ -108,7 +113,7 @@ class Enemy:
 
     @property
     def row(self):
-        return {"IDLE": 0, "CHASE": 1}.get(self.state, 3)
+        return {"IDLE": 0, "CHASE": 1, "ATTACK": 2}.get(self.state, 3)
 
     @property
     def collision_bounds(self):
@@ -122,6 +127,8 @@ class Enemy:
     def frame(self):
         if self.defeated:
             return FRAME_COUNT - 1
+        if self.state == "ATTACK":
+            return min(int(self.animation_time * ENEMY_ATTACK_FPS + 1e-9), FRAME_COUNT - 1)
         if self.alive:
             fps = ENEMY_CHASE_FPS if self.state == "CHASE" else ENEMY_IDLE_FPS
             return int(self.animation_time * fps + 1e-9) % FRAME_COUNT
@@ -146,8 +153,26 @@ class Enemy:
             return True
         return False
 
+    def _update_attack(self, dt, player):
+        self.animation_time = min(self.animation_time + dt, ENEMY_ATTACK_DURATION)
+        # Crossing the hit time triggers once, even if a slow frame skips poses.
+        if not self.attack_hit and self.animation_time >= ENEMY_ATTACK_HIT_TIME - 1e-9:
+            self.attack_hit = True
+            if player is not None:
+                distance = self.facing * (player.x - self.x)
+                if (0 <= distance <= ENEMY_ATTACK_RANGE
+                        and abs(player.foot_y - self.foot_y) <= ENEMY_ATTACK_HEIGHT_RANGE):
+                    player.take_damage()
+        if self.animation_time >= ENEMY_ATTACK_DURATION - 1e-9:
+            self.state, self.animation_time = "IDLE", 0.0
+            self.attack_cooldown = ENEMY_ATTACK_COOLDOWN
+
     def update(self, dt, player=None):
+        if self.state == "ATTACK":
+            self._update_attack(dt, player)
+            return
         if self.alive:
+            self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
             previous_state = self.state
             next_state = "IDLE"
             if player is not None:
@@ -157,6 +182,12 @@ class Enemy:
                 self.aware = distance <= detection_range
                 if self.aware and dx != 0:
                     self.facing = 1 if dx > 0 else -1
+                if (self.aware and player.health > 0 and self.attack_cooldown <= 1e-9
+                        and distance <= ENEMY_ATTACK_START_RANGE
+                        and abs(player.foot_y - self.foot_y) <= ENEMY_ATTACK_HEIGHT_RANGE):
+                    self.state, self.animation_time, self.attack_hit = "ATTACK", 0.0, False
+                    return
+                if self.aware and dx != 0:
                     remaining = max(0.0, distance - ENEMY_STOP_DISTANCE)
                     half_width = FRAME_WIDTH * ENEMY_SCALE / 2
                     room = WIDTH - half_width - self.x if self.facing > 0 else self.x - half_width
@@ -254,6 +285,8 @@ class Stage:
         self.arrow_time = (self.arrow_time + dt) % ARROW_SWAY_PERIOD
         for index, item in enumerate(self.items):
             self.items[index] = item.update(dt)
+        if player is not None:
+            player.update_damage(dt)
         self.enemy.update(dt, player)
 
     def try_transition(self, player, controls, rng=None):
@@ -308,6 +341,17 @@ class Player:
     horizontal_speed: float = 0.0
     boundary_speed: float = 0.0
     support_y: float = GROUND_Y
+    hurt_time: float = 0.0
+
+    def take_damage(self, amount=1):
+        if self.health <= 0 or self.hurt_time > 1e-9 or amount <= 0:
+            return False
+        self.health = max(0, self.health - amount)
+        self.hurt_time = PLAYER_HURT_INVULNERABILITY
+        return True
+
+    def update_damage(self, dt):
+        self.hurt_time = max(0.0, self.hurt_time - dt)
 
     @property
     def grounded(self):

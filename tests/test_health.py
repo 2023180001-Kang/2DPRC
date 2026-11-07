@@ -1,12 +1,12 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
 from game import Player
 from rendering import draw_health
 from resources import IMAGE_FILES, ROOT
-from settings import HEALTH_BAR_WIDTH, HEIGHT, HUD_MARGIN, WIDTH
+from settings import HEALTH_BAR_WIDTH, HEALTH_FILL_BOUNDS, HEIGHT, HUD_MARGIN, WIDTH
 
 
 class HealthTests(unittest.TestCase):
@@ -45,3 +45,33 @@ class HealthTests(unittest.TestCase):
         self.image.reset_mock()
         draw_health(self.image, Player(x=100, foot_y=400, state="JUMP"))
         self.assertEqual(self.image.draw.call_args, expected)
+
+    def test_depleted_gauge_matches_health_and_preserves_portrait_and_border(self):
+        for health in (3, 2, 1, 0):
+            with self.subTest(health=health), patch("rendering.draw_rectangle") as rectangle:
+                self.image.reset_mock()
+                draw_health(self.image, Player(health=health))
+                self.image.draw.assert_called_once()
+                if health == 3:
+                    rectangle.assert_not_called()
+                    continue
+                left, top, right, bottom = HEALTH_FILL_BOUNDS
+                scale = HEALTH_BAR_WIDTH / self.image.w
+                x1, y1, x2, y2, *color = rectangle.call_args.args
+                self.assertAlmostEqual(x1, HUD_MARGIN + (left + (right - left) * health / 3) * scale)
+                self.assertAlmostEqual(x2, HUD_MARGIN + right * scale)
+                self.assertAlmostEqual(y1, HEIGHT - HUD_MARGIN - bottom * scale)
+                self.assertAlmostEqual(y2, HEIGHT - HUD_MARGIN - top * scale)
+                self.assertEqual(color, [3, 7, 15])
+                self.assertEqual(rectangle.call_args.kwargs, {"filled": True})
+                self.assertGreaterEqual(x1, HUD_MARGIN + left * scale)
+
+    def test_out_of_range_health_is_clamped_for_drawing(self):
+        with patch("rendering.draw_rectangle") as rectangle:
+            draw_health(self.image, Player(health=-1))
+            empty = rectangle.call_args
+            draw_health(self.image, Player(health=0))
+            self.assertEqual(rectangle.call_args, empty)
+            rectangle.reset_mock()
+            draw_health(self.image, Player(health=10))
+            rectangle.assert_not_called()

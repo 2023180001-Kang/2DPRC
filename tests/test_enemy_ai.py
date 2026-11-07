@@ -69,12 +69,12 @@ class EnemyAITests(unittest.TestCase):
 
     def test_contact_and_equal_x_do_not_push_either_body_away(self):
         for distance in (0, 56, ENEMY_STOP_DISTANCE):
-            enemy, player = Enemy(x=640), Player(x=640 + distance)
+            enemy, player = Enemy(x=640, attack_cooldown=1000), Player(x=640 + distance)
             enemy.update(1, player)
             self.assertEqual((enemy.x, player.x, enemy.state), (640, 640 + distance, "IDLE"))
 
     def test_moving_away_resumes_chase_and_crossing_over_reverses_facing(self):
-        enemy, player = Enemy(x=640), Player(x=704)
+        enemy, player = Enemy(x=640, attack_cooldown=1000), Player(x=704)
         enemy.update(0.1, player)
         self.assertEqual(enemy.state, "IDLE")
         player.x = 804
@@ -92,7 +92,7 @@ class EnemyAITests(unittest.TestCase):
             self.assertEqual(enemy.state, "IDLE")
 
     def test_chase_animation_loops_all_frames_then_idle_animation_continues(self):
-        enemy, player = Enemy(x=400), Player(x=800)
+        enemy, player = Enemy(x=400, attack_cooldown=1000), Player(x=800)
         enemy.update(0, player)
         frames = set()
         for _ in range(8):
@@ -114,14 +114,14 @@ class EnemyAITests(unittest.TestCase):
             self.assertEqual(args[:4], (3 * 256, 512, 256, 256))
             self.assertEqual(args[5], "h" if facing < 0 else "")
 
-    def test_chasing_enemy_can_be_killed_by_each_weapon_and_stays_in_place(self):
+    def test_live_enemy_can_be_killed_by_each_weapon_and_stays_in_place(self):
         for weapon in (None, "dagger", "steel_pipe"):
             for facing in (-1, 1):
                 enemy = Enemy(x=640 + facing * 85)
                 player = Player(x=640, facing=facing, weapon=weapon)
                 stage = Stage([], enemy=enemy)
                 stage.update(0.1, player)
-                self.assertEqual(enemy.state, "CHASE")
+                self.assertEqual(enemy.state, "ATTACK")
                 player.update(0, Controls(attack_requested=True), enemy)
                 self.assertEqual((enemy.state, enemy.aware), ("DYING", False))
                 x = enemy.x
@@ -135,7 +135,7 @@ class EnemyAITests(unittest.TestCase):
     def test_dynamic_chase_and_player_run_do_not_overlap_on_the_ground(self):
         for direction in (-1, 1):
             for fps in (2, 30, 60, 144):
-                enemy = Enemy(x=640 + direction * 300)
+                enemy = Enemy(x=640 + direction * 300, attack_cooldown=1000)
                 player = Player(x=640, horizontal_speed=direction * RUN_SPEED)
                 stage = Stage([], enemy=enemy)
                 controls = Controls(held={"right" if direction > 0 else "left", "lshift"})
@@ -147,8 +147,8 @@ class EnemyAITests(unittest.TestCase):
                     self.assertEqual(player.health, 3)
                 self.assertEqual(player.state, "IDLE")
 
-    def test_enemy_never_attacks_or_damages_player_during_close_contact(self):
-        enemy, player = Enemy(x=700), Player(x=640)
+    def test_contact_during_cooldown_has_no_passive_damage(self):
+        enemy, player = Enemy(x=700, attack_cooldown=1000), Player(x=640)
         for _ in range(600):
             enemy.update(1 / 60, player)
             self.assertEqual((enemy.state, enemy.row, player.health), ("IDLE", 0, 3))

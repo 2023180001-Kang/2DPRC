@@ -1,4 +1,4 @@
-"""Verify contact idle, double-jump clearance and corpse platforms via SDL."""
+"""Verify contact and corpse platforms in an uncleared encounter via SDL."""
 
 import json
 from unittest.mock import patch
@@ -16,7 +16,9 @@ from tools.verify_runtime import capture, push
 
 def verify(output):
     player, enemy = Player(), Enemy(x=800)
-    stage = Stage([], enemy=enemy)
+    # Keep one distant enemy alive so the course remains uncleared while
+    # exercising corpse collisions. Cleared routes are checked separately.
+    stage = Stage([], enemies=[enemy, Enemy(x=-1000)])
     tick, clock, phase, phase_tick = -1, 0.0, "approach", 0
     records, screenshots, checkpoints = [], [], []
     pending_shot = None
@@ -155,7 +157,7 @@ def verify(output):
           patch("main.sleep"), patch("main.draw_health", side_effect=observe)):
         result = main.run(frame_limit=810)
     assert phase == "done" and len(screenshots) == 14
-    assert enemy.defeated and stage.visible_arrows == (1,)
+    assert enemy.defeated and not stage.cleared and stage.visible_arrows == ()
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"frames": result["frames"], "fixed_dt": 1 / 60,
             "live_enemy_blocking": "PASS", "live_double_jump_clearance": "PASS", "contact_idle": "PASS",

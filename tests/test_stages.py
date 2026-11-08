@@ -18,7 +18,7 @@ from settings import (
 class StageTests(unittest.TestCase):
     def setUp(self):
         # Exercise travel after clearing the encounter; gates have their own tests.
-        patcher = patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD"))
+        patcher = patch("game.spawn_enemies", side_effect=lambda *args, **kwargs: [Enemy(state="DEAD")])
         patcher.start()
         self.addCleanup(patcher.stop)
 

@@ -79,7 +79,7 @@ class LifecycleTests(unittest.TestCase):
                 draw_stage_arrows=self.draw_stage_arrows,
                 sleep=Mock(), perf_counter=Mock(side_effect=range(100)),
             ),
-            patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD")),
+            patch("game.spawn_enemies", side_effect=lambda *args, **kwargs: [Enemy(state="DEAD")]),
         ]
         for patcher in patches:
             patcher.start()
@@ -167,6 +167,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(initialization.mock_calls, [call.player(), call.spawn()])
         self.assertEqual(self.draw_items.call_args_list, [call(self.images, self.items)] * 3)
         self.assert_images_released_before_close()
+
+    def test_main_loop_draws_every_enemy_in_the_encounter(self):
+        stage = Stage([], enemies=[Enemy(x=x, state="DEAD") for x in (300, 600, 900)])
+        image = self.images["enemy"]
+        with patch.object(main, "Stage", return_value=stage):
+            main.run(frame_limit=1)
+        self.assertEqual(self.draw_enemy.call_args_list, [call(image, enemy) for enemy in stage.enemies])
 
     def test_melee_hit_translates_every_world_layer_but_keeps_hud_independent(self):
         stage = Stage([], enemy=Enemy(x=704, state="ATTACK"))

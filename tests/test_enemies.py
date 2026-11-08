@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from PIL import Image
 
-from game import Controls, Enemy, Player, Stage, spawn_enemy
+from game import Controls, Enemy, Player, Stage, spawn_enemy, spawn_enemies
 from rendering import draw_enemy, draw_stage_arrows
 from resources import ROOT
 from settings import (
@@ -39,10 +39,11 @@ class EnemyTests(unittest.TestCase):
                                        ARROW_WIDTH / 2 + ARROW_SWAY_AMPLITUDE + ARROW_SPAWN_PADDING + PLAYER_HALF_WIDTH)
             self.assertGreater(len(positions), 1)
 
-    def test_stage_defaults_to_one_live_enemy_and_no_forward_arrow(self):
+    def test_stage_defaults_to_six_live_enemies_and_no_forward_arrow(self):
         for number, arrows in ((1, ()), (2, (-1,))):
             stage = Stage([], number=number)
             self.assertIsInstance(stage.enemy, Enemy)
+            self.assertEqual(len(stage.enemies), 6)
             self.assertEqual(stage.enemy.state, "IDLE")
             self.assertEqual(stage.visible_arrows, arrows)
 
@@ -167,7 +168,7 @@ class EnemyTests(unittest.TestCase):
                 controls = Controls(held={"right", "lshift", "a"}, attack_requested=True)
                 player_before = vars(player).copy()
                 controls_before = dict(vars(controls), held=controls.held.copy())
-                with patch("game.spawn_items") as items, patch("game.spawn_enemy") as enemies:
+                with patch("game.spawn_items") as items, patch("game.spawn_enemies") as enemies:
                     self.assertFalse(stage.try_transition(player, controls))
                     items.assert_not_called()
                     enemies.assert_not_called()
@@ -189,7 +190,7 @@ class EnemyTests(unittest.TestCase):
         first = Enemy(x=400, state="DEAD")
         stage, controls = Stage([], enemy=first), Controls()
         player = Player(x=ARROW_X[1])
-        with patch("game.spawn_enemy", wraps=spawn_enemy) as spawn:
+        with patch("game.spawn_enemies", wraps=spawn_enemies) as spawn:
             self.assertTrue(stage.try_transition(player, controls, Random(2)))
             second = stage.enemy
             player.x = ARROW_X[-1]
@@ -220,7 +221,8 @@ class EnemyTests(unittest.TestCase):
     def test_last_map_right_arrow_appears_after_defeat_but_has_no_destination(self):
         stage = Stage([], number=max(STAGE_BACKGROUNDS))
         self.assertEqual(stage.visible_arrows, (-1,))
-        stage.enemy.hit()
+        for enemy in stage.enemies:
+            enemy.hit()
         stage.update(ENEMY_DEATH_DURATION)
         self.assertEqual(stage.visible_arrows, (-1, 1))
         self.assertFalse(stage.try_transition(Player(x=ARROW_X[1]), Controls()))
@@ -231,7 +233,8 @@ class EnemyTests(unittest.TestCase):
         stage = Stage([])
         draw_stage_arrows(images, 1, directions=stage.visible_arrows)
         images["arrow_right"].draw.assert_not_called()
-        stage.enemy.hit()
+        for enemy in stage.enemies:
+            enemy.hit()
         stage.update(0.5)
         draw_stage_arrows(images, 1, directions=stage.visible_arrows)
         images["arrow_right"].draw.assert_not_called()

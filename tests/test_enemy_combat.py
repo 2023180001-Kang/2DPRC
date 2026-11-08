@@ -162,7 +162,7 @@ class EnemyCombatTests(unittest.TestCase):
         second = Enemy(x=192)
         stage = Stage([], enemy=Enemy(state="DEAD"))
         player, controls = Player(x=ARROW_X[1]), Controls()
-        with patch("game.spawn_enemy", return_value=second):
+        with patch("game.spawn_enemies", return_value=[second]):
             stage.try_transition(player, controls)
         stage.update(0, player)
         stage.update(ENEMY_ATTACK_HIT_TIME / 2, player)

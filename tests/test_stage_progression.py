@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from game import Controls, Enemy, Item, Player, Stage, spawn_enemy, spawn_items
+from game import Controls, Enemy, Item, Player, Stage, spawn_enemy, spawn_enemies, spawn_items
 from resources import IMAGE_FILES, ROOT
 from settings import (
     ARROW_SPAWN_PADDING, ARROW_SWAY_AMPLITUDE, ARROW_WIDTH, ARROW_X,
@@ -81,11 +81,12 @@ class StageProgressionTests(unittest.TestCase):
         stage = Stage([Item("dagger", 400)], enemy=first)
         player, controls = Player(weapon="steel_pipe", health=2), Controls()
         enemies, items = {1: first}, {1: stage.items}
-        with (patch("game.spawn_enemy", wraps=spawn_enemy) as enemy_spawn,
+        with (patch("game.spawn_enemies", wraps=spawn_enemies) as enemy_spawn,
               patch("game.spawn_items", wraps=spawn_items) as item_spawn):
             for number in range(1, 7):
                 self.assertEqual(stage.number, number)
-                stage.enemy.hit()
+                for enemy in stage.enemies:
+                    enemy.hit()
                 stage.update(ENEMY_DEATH_DURATION)
                 # A dropped weapon on a visited map must survive round trips.
                 stage.items.append(Item("steel_pipe", 700))
@@ -113,8 +114,8 @@ class StageProgressionTests(unittest.TestCase):
     def test_return_is_available_before_defeating_each_later_stage(self):
         for number in range(2, 7):
             stage = Stage([], number=number)
-            current = stage.enemy
-            self.assertEqual(current.state, "IDLE")
+            current = stage.enemies
+            self.assertTrue(all(enemy.state == "IDLE" for enemy in current))
             self.assertTrue(stage.try_transition(Player(x=ARROW_X[-1]), Controls(), Random(number)))
             self.assertEqual(stage.number, number - 1)
             self.assertIs(stage._enemies_by_stage[number], current)

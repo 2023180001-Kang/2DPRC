@@ -10,7 +10,7 @@ from settings import AIR_DROP_HEIGHT, ARROW_X, GRAVITY, GROUND_Y, ITEM_WIDTHS
 
 class FallingItemTests(unittest.TestCase):
     def setUp(self):
-        patcher = patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD"))
+        patcher = patch("game.spawn_enemies", side_effect=lambda *args, **kwargs: [Enemy(state="DEAD")])
         patcher.start()
         self.addCleanup(patcher.stop)
 

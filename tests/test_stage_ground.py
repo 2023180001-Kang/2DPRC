@@ -2,7 +2,7 @@ from random import Random
 import unittest
 from unittest.mock import Mock, patch
 
-from game import Controls, Enemy, Item, Player, Stage, spawn_enemy, spawn_items
+from game import Controls, Enemy, Item, Player, Stage, spawn_enemy, spawn_enemies, spawn_items
 from rendering import draw_character, draw_enemy, draw_stage_arrows
 from settings import ARROW_X, CHARACTER_SCALE, ENEMY_SCALE, FRAME_BOTTOM_PADDING, STAGE_GROUND_Y
 
@@ -92,7 +92,7 @@ class StageGroundTests(unittest.TestCase):
     def test_factory_revisit_keeps_enemy_and_dropped_item_at_local_floor(self):
         stage = Stage([], number=4, enemy=Enemy(state="DEAD"))
         player, controls = Player(x=ARROW_X[1]), Controls()
-        with patch("game.spawn_enemy", wraps=spawn_enemy) as spawn:
+        with patch("game.spawn_enemies", wraps=spawn_enemies) as spawn:
             stage.try_transition(player, controls, Random(1))
             enemy = stage.enemy
             player.x = stage.items[0].x

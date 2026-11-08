@@ -158,7 +158,7 @@ class EnemyAITests(unittest.TestCase):
         second = Enemy(x=400)
         stage, controls = Stage([], enemy=first), Controls()
         player = Player(x=ARROW_X[1])
-        with patch("game.spawn_enemy", return_value=second) as spawn:
+        with patch("game.spawn_enemies", return_value=[second]) as spawn:
             self.assertTrue(stage.try_transition(player, controls))
             stage.update(0.2, player)
             self.assertTrue(second.aware)

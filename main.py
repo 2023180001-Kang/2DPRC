@@ -63,7 +63,7 @@ def run(frame_limit=None):
             controls.restart_requested = controls.hit_test_requested = False
             stage.update(dt, player)
             player.pick_up(stage.items, controls)
-            player.update(dt, controls, stage.enemy)
+            player.update(dt, controls, stage.enemies)
             stage.try_transition(player, controls)
             offset = camera_offset(player)
             camera = {"offset": offset} if offset != (0.0, 0.0) else {}
@@ -71,7 +71,8 @@ def run(frame_limit=None):
             draw_background(images[stage.background_key], **camera)
             draw_stage_arrows(images, stage.number, stage.arrow_time, directions=stage.visible_arrows, **camera)
             draw_items(images, stage.items, **camera)
-            draw_enemy(images["enemy"], stage.enemy, **camera)
+            for enemy in stage.enemies:
+                draw_enemy(images["enemy"], enemy, **camera)
             draw_character(images[player.character_key], player, **camera)
             draw_held_weapon(images, player, **camera)
             draw_falling_items(images, stage.items, **camera)

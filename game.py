@@ -25,6 +25,7 @@ from settings import (
     PLAYER_DEATH_FPS, PLAYER_DEATH_FRAMES, PLAYER_DEATH_ROW,
     PLAYER_DEATH_KNOCKBACK_DISTANCE, PLAYER_DEATH_KNOCKBACK_DURATION, PLAYER_DEATH_CLEARANCE,
     STAGE_GROUND_Y,
+    ENEMIES_PER_SIDE, ENEMY_ENTRY_SPACING,
 )
 
 
@@ -115,6 +116,7 @@ class Enemy:
     aware: bool = False
     attack_cooldown: float = 0.0
     attack_hit: bool = False
+    relentless: bool = False
 
     @property
     def alive(self):
@@ -193,7 +195,9 @@ class Enemy:
             speed = PLAYER_DEATH_KNOCKBACK_DISTANCE / PLAYER_DEATH_KNOCKBACK_DURATION
             half_width = FRAME_WIDTH * ENEMY_SCALE / 2
             old_x = self.x
-            self.x = max(half_width, min(WIDTH - half_width, self.x + direction * min(speed * dt, remaining)))
+            # Enemies still entering must not teleport inside on player death.
+            self.x = max(min(half_width, old_x), min(max(WIDTH - half_width, old_x),
+                         self.x + direction * min(speed * dt, remaining)))
             next_state = "CHASE" if abs(self.x - old_x) > 1e-9 else "IDLE"
             fps = ENEMY_CHASE_FPS if next_state == "CHASE" else ENEMY_IDLE_FPS
             self.animation_time = ((self.animation_time + dt) % (FRAME_COUNT / fps)
@@ -213,7 +217,7 @@ class Enemy:
                 dx = player.x - self.x
                 distance = abs(dx)
                 detection_range = ENEMY_LOSE_RANGE if self.aware else ENEMY_DETECTION_RANGE
-                self.aware = distance <= detection_range
+                self.aware = self.relentless or distance <= detection_range
                 if self.aware and dx != 0:
                     self.facing = 1 if dx > 0 else -1
                 if (self.aware and player.health > 0 and self.attack_cooldown <= 1e-9
@@ -253,6 +257,19 @@ def spawn_enemy(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
     return Enemy(x=x, foot_y=STAGE_GROUND_Y[stage_number], facing=-1 if x > spawn_x else 1)
 
 
+def spawn_enemies(rng=None, spawn_x=WIDTH / 2, *, stage_number=1):
+    """Send three enemies per side in from beyond the screen edges."""
+    enemies = []
+    half_width = FRAME_WIDTH * ENEMY_SCALE / 2
+    for side in (-1, 1):
+        for index in range(ENEMIES_PER_SIDE):
+            distance = half_width + index * ENEMY_ENTRY_SPACING
+            x = -distance if side < 0 else WIDTH + distance
+            enemies.append(Enemy(x=x, foot_y=STAGE_GROUND_Y[stage_number],
+                                 facing=-side, relentless=True))
+    return enemies
+
+
 def _integrate_speed(speed, target, acceleration, dt):
     """Integrate the ramp and any remaining constant-speed time exactly."""
     difference = target - speed
@@ -287,21 +304,35 @@ def _integrate_friction(speed, dt, grounded):
     return sign * next_magnitude, sign * max(0.0, distance)
 
 
-@dataclass
+@dataclass(init=False)
 class Stage:
     items: list[Item]
     number: int = 1
     arrow_time: float = 0.0
-    enemy: Enemy | None = None
+    enemies: list[Enemy] = field(default_factory=list)
     _items_by_stage: dict[int, list[Item]] = field(default_factory=dict, init=False, repr=False)
-    _enemies_by_stage: dict[int, Enemy] = field(default_factory=dict, init=False, repr=False)
+    _enemies_by_stage: dict[int, list[Enemy]] = field(default_factory=dict, init=False, repr=False)
 
-    def __post_init__(self):
-        self._items_by_stage[self.number] = self.items
-        if self.enemy is None:
-            spawn_x = WIDTH / 2 if self.number == 1 else STAGE_ENTRY_LEFT_X
-            self.enemy = spawn_enemy(spawn_x=spawn_x, stage_number=self.number)
-        self._enemies_by_stage[self.number] = self.enemy
+    def __init__(self, items, number=1, arrow_time=0.0, enemy=None, *, enemies=None):
+        self.items, self.number, self.arrow_time = items, number, arrow_time
+        spawn_x = WIDTH / 2 if number == 1 else STAGE_ENTRY_LEFT_X
+        self.enemies = (enemies if enemies is not None else [enemy] if enemy is not None
+                        else spawn_enemies(spawn_x=spawn_x, stage_number=number))
+        self._items_by_stage = {number: items}
+        self._enemies_by_stage = {number: self.enemies}
+
+    @property
+    def enemy(self):
+        """First enemy accessor for single-enemy scenarios and preview tools."""
+        return self.enemies[0]
+
+    @enemy.setter
+    def enemy(self, enemy):
+        self.enemies[0] = enemy
+
+    @property
+    def cleared(self):
+        return bool(self.enemies) and all(enemy.defeated for enemy in self.enemies)
 
     @property
     def background_key(self):
@@ -314,10 +345,10 @@ class Stage:
     @property
     def visible_arrows(self):
         return tuple(direction for direction in STAGE_ARROWS[self.number]
-                     if direction < 0 or self.enemy.defeated)
+                     if direction < 0 or self.cleared)
 
     def hit_enemy(self, player):
-        return self.enemy.try_hit(player)
+        return any(enemy.try_hit(player) for enemy in sorted(self.enemies, key=lambda enemy: abs(enemy.x - player.x)))
 
     def update(self, dt, player=None):
         self.arrow_time = (self.arrow_time + dt) % ARROW_SWAY_PERIOD
@@ -326,7 +357,24 @@ class Stage:
         if player is not None:
             player.set_ground_y(self.ground_y)
             player.update_damage(dt)
-        self.enemy.update(dt, player)
+        # Front enemies move first; those behind wait rather than stacking.
+        ordered = sorted(self.enemies, key=lambda enemy: abs(enemy.x - player.x)) if player else self.enemies
+        for enemy in ordered:
+            old_x = enemy.x
+            enemy.update(dt, player)
+            if not enemy.alive or enemy.x == old_x or (player and player.incapacitated):
+                continue
+            direction = 1 if enemy.x > old_x else -1
+            spacing = 2 * ENEMY_BODY_HALF_WIDTH + 8.0
+            for other in self.enemies:
+                if other is enemy or not other.alive:
+                    continue
+                gap = direction * (other.x - old_x)
+                if gap >= spacing - 1e-9:
+                    travel = min(abs(enemy.x - old_x), max(0.0, gap - spacing))
+                    enemy.x = old_x + direction * travel
+            if enemy.x == old_x and enemy.state == "CHASE":
+                enemy.state, enemy.animation_time = "IDLE", 0.0
 
     def try_transition(self, player, controls, rng=None):
         if player.incapacitated:
@@ -340,12 +388,12 @@ class Stage:
         was_grounded = player.grounded
         if destination not in self._items_by_stage:
             self._items_by_stage[destination] = spawn_items(rng, spawn_x=entry_x, stage_number=destination)
-            self._enemies_by_stage[destination] = spawn_enemy(rng, spawn_x=entry_x, stage_number=destination)
+            self._enemies_by_stage[destination] = spawn_enemies(rng, spawn_x=entry_x, stage_number=destination)
         self._items_by_stage[self.number] = self.items
-        self._enemies_by_stage[self.number] = self.enemy
+        self._enemies_by_stage[self.number] = self.enemies
         self.number = destination
         self.items = self._items_by_stage[destination]
-        self.enemy = self._enemies_by_stage[destination]
+        self.enemies = self._enemies_by_stage[destination]
         player.x = entry_x
         player.set_ground_y(self.ground_y)
         player.support_y = self.ground_y
@@ -566,13 +614,16 @@ class Player:
             self.horizontal_speed = 0.0
         return travel, blocked
 
-    def _prepare_support(self, obstacle):
-        left, _, right, top = obstacle.collision_bounds
-        on_top = (left - PLAYER_BODY_HALF_WIDTH < self.x < right + PLAYER_BODY_HALF_WIDTH
-                  and abs(self.foot_y - top) <= 1e-7 and self.vertical_speed == 0)
+    def _prepare_support(self, obstacles):
+        tops = []
+        for obstacle in obstacles:
+            left, _, right, top = obstacle.collision_bounds
+            if (left - PLAYER_BODY_HALF_WIDTH < self.x < right + PLAYER_BODY_HALF_WIDTH
+                    and abs(self.foot_y - top) <= 1e-7 and self.vertical_speed == 0):
+                tops.append(top)
         was_supported = self.grounded and self.support_y > self.ground_y
-        self.support_y = top if on_top else self.ground_y
-        if was_supported and not on_top and self.foot_y > self.ground_y:
+        self.support_y = max(tops, default=self.ground_y)
+        if was_supported and not tops and self.foot_y > self.ground_y:
             self.jump_count = max(1, self.jump_count)
 
     def _resolve_enemy_collision(self, obstacle, old_x, old_y, direction):
@@ -606,13 +657,6 @@ class Player:
             blocked = False
         if blocked:
             self.horizontal_speed = self.boundary_speed = 0.0
-        if self.support_y > self.ground_y and not (
-                left < self.x < right and abs(self.foot_y - top) <= 1e-7
-                and self.vertical_speed == 0):
-            was_grounded = self.grounded
-            self.support_y = self.ground_y
-            if was_grounded:
-                self.jump_count = max(1, self.jump_count)
         return landed, blocked
 
     def update(self, dt, controls, obstacle=None):
@@ -638,24 +682,31 @@ class Player:
             attack_started = True
         controls.attack_requested = False
 
-        if obstacle is None:
+        obstacles = (() if obstacle is None else (obstacle,) if isinstance(obstacle, Enemy) else tuple(obstacle))
+        if not obstacles:
             self._update_motion(dt, controls)
         else:
             steps = max(1, ceil(dt / COLLISION_STEP))
             step = dt / steps
             boundary_speed = 0.0
             for _ in range(steps):
-                self._prepare_support(obstacle)
+                self._prepare_support(obstacles)
                 old_x, old_y = self.x, self.foot_y
                 old_state, old_animation_time = self.state, self.animation_time
                 self._update_motion(step, controls)
                 if abs(self.boundary_speed) > abs(boundary_speed):
                     boundary_speed = self.boundary_speed
                 direction = controls.direction if controls.focused else 0
-                landed, body_blocked = self._resolve_enemy_collision(obstacle, old_x, old_y, direction)
+                landed = body_blocked = False
+                for body in sorted(obstacles, key=lambda body: abs(body.x - old_x)):
+                    body_landed, blocked = self._resolve_enemy_collision(body, old_x, old_y, direction)
+                    landed |= body_landed
+                    body_blocked |= blocked
                 # Check every movement substep: running/jumping can enter and
                 # leave the attack range between two rendered frames.
-                obstacle.try_hit(self)
+                for body in sorted(obstacles, key=lambda body: abs(body.x - self.x)):
+                    body.try_hit(self)
+                self._prepare_support(obstacles)
                 if landed or (self.state != "JUMP" and not self.grounded):
                     self._update_motion(0, controls)
                 if body_blocked and self.grounded:

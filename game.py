@@ -312,6 +312,7 @@ class Stage:
     enemies: list[Enemy] = field(default_factory=list)
     _items_by_stage: dict[int, list[Item]] = field(default_factory=dict, init=False, repr=False)
     _enemies_by_stage: dict[int, list[Enemy]] = field(default_factory=dict, init=False, repr=False)
+    cleared_stages: set[int] = field(default_factory=set, init=False)
 
     def __init__(self, items, number=1, arrow_time=0.0, enemy=None, *, enemies=None):
         self.items, self.number, self.arrow_time = items, number, arrow_time
@@ -320,6 +321,8 @@ class Stage:
                         else spawn_enemies(spawn_x=spawn_x, stage_number=number))
         self._items_by_stage = {number: items}
         self._enemies_by_stage = {number: self.enemies}
+        self.cleared_stages = set()
+        self._remember_clear()
 
     @property
     def enemy(self):
@@ -332,7 +335,17 @@ class Stage:
 
     @property
     def cleared(self):
-        return bool(self.enemies) and all(enemy.defeated for enemy in self.enemies)
+        return (self.number in self.cleared_stages
+                or bool(self.enemies) and all(enemy.defeated for enemy in self.enemies))
+
+    def _remember_clear(self):
+        if self.cleared:
+            self.cleared_stages.add(self.number)
+
+    @property
+    def collision_enemies(self):
+        # Keep the bodies visible, but never let them seal a cleared route.
+        return () if self.cleared else self.enemies
 
     @property
     def background_key(self):
@@ -375,10 +388,12 @@ class Stage:
                     enemy.x = old_x + direction * travel
             if enemy.x == old_x and enemy.state == "CHASE":
                 enemy.state, enemy.animation_time = "IDLE", 0.0
+        self._remember_clear()
 
     def try_transition(self, player, controls, rng=None):
         if player.incapacitated:
             return False
+        self._remember_clear()
         direction = next((direction for direction in self.visible_arrows
                           if abs(player.x - ARROW_X[direction]) <= ARROW_TRIGGER_HALF_WIDTH), 0)
         destination = self.number + direction
@@ -684,6 +699,9 @@ class Player:
 
         obstacles = (() if obstacle is None else (obstacle,) if isinstance(obstacle, Enemy) else tuple(obstacle))
         if not obstacles:
+            if obstacle is not None:
+                # A cleared stage removes every body, including standing support.
+                self._prepare_support(())
             self._update_motion(dt, controls)
         else:
             steps = max(1, ceil(dt / COLLISION_STEP))

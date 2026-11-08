@@ -63,7 +63,7 @@ def run(frame_limit=None):
             controls.restart_requested = controls.hit_test_requested = False
             stage.update(dt, player)
             player.pick_up(stage.items, controls)
-            player.update(dt, controls, stage.enemies)
+            player.update(dt, controls, stage.collision_enemies)
             stage.try_transition(player, controls)
             offset = camera_offset(player)
             camera = {"offset": offset} if offset != (0.0, 0.0) else {}

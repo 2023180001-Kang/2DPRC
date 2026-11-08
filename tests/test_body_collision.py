@@ -236,7 +236,7 @@ class BodyCollisionTests(unittest.TestCase):
                 self.assertAlmostEqual(player.x, enemy.collision_bounds[0] - PLAYER_BODY_HALF_WIDTH)
                 self.assertEqual(player.horizontal_speed, 0)
 
-    def test_transition_clears_old_support_and_revisited_corpse_is_still_solid(self):
+    def test_transition_clears_old_support_and_revisited_cleared_map_is_walkable(self):
         corpse = Enemy(x=640, state="DEAD")
         stage = Stage([], enemy=corpse)
         player = Player(x=ARROW_X[1], foot_y=180, support_y=180, horizontal_speed=370)
@@ -247,5 +247,6 @@ class BodyCollisionTests(unittest.TestCase):
         self.assertTrue(stage.try_transition(player, Controls()))
         self.assertIs(stage.enemy, corpse)
         player.horizontal_speed = -RUN_SPEED
-        player.update(1, Controls({"left", "lshift"}), stage.enemy)
-        self.assertEqual(player.x, 734)
+        player.update(1, Controls({"left", "lshift"}), stage.collision_enemies)
+        self.assertLess(player.x, 546)
+        self.assertEqual(player.foot_y, GROUND_Y)

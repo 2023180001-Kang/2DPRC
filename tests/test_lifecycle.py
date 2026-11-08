@@ -175,6 +175,32 @@ class LifecycleTests(unittest.TestCase):
             main.run(frame_limit=1)
         self.assertEqual(self.draw_enemy.call_args_list, [call(image, enemy) for enemy in stage.enemies])
 
+    def test_cleared_stage_can_reenter_partial_encounter_past_exit_corpses(self):
+        stage = Stage([], enemies=[Enemy(x=1200, state="DEAD") for _ in range(6)])
+        player, controls = Player(x=ARROW_X[1]), main.Controls()
+        remaining = [Enemy(x=600 + index * 80) for index in range(6)]
+        with patch("game.spawn_enemies", return_value=remaining):
+            self.assertTrue(stage.try_transition(player, controls))
+        remaining[0].hit()
+        stage.update(1)
+        self.assertEqual(sum(enemy.alive for enemy in remaining), 5)
+        player.x = ARROW_X[-1]
+        self.assertTrue(stage.try_transition(player, controls))
+        self.assertEqual(stage.number, 1)
+
+        def walk_right(current):
+            current.set_key("right", True)
+            current.set_key("lshift", True)
+            return True
+
+        self.poll_events.side_effect = walk_right
+        with (patch.object(main, "Stage", return_value=stage),
+              patch.object(main, "Player", return_value=player)):
+            result = main.run(frame_limit=1)
+        self.assertEqual(result["stage"], 2)
+        self.assertIs(stage.enemies, remaining)
+        self.assertEqual(sum(enemy.alive for enemy in remaining), 5)
+
     def test_melee_hit_translates_every_world_layer_but_keeps_hud_independent(self):
         stage = Stage([], enemy=Enemy(x=704, state="ATTACK"))
         with patch.object(main, "Stage", return_value=stage):
@@ -213,6 +239,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(new_stage.arrow_time, 0)
         self.assertEqual(set(new_stage._items_by_stage), {1})
         self.assertEqual(set(new_stage._enemies_by_stage), {1})
+        self.assertEqual(new_stage.cleared_stages, set())
         self.assertTrue(new_stage.enemy.alive)
         controls = controls_seen[0]
         self.assertEqual(controls.held, {"r", "h"})

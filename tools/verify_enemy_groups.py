@@ -1,4 +1,4 @@
-"""Exercise real six-enemy entry, SDL counterattacks, travel and restart."""
+"""Exercise six living enemies attacking together before SDL counterattacks."""
 
 import json
 from unittest.mock import patch
@@ -25,6 +25,11 @@ def verify_case(output, number):
     previous_feedback = 0.0
     load_count = 0
     all_visible = False
+    attack_cycles = [0] * 6
+    previous_hits = [False] * 6
+    max_attackers = 0
+    crowd_tick = None
+    cycles_before_counter = None
 
     def make_stage(items):
         current = stage if not stages else Stage(items)
@@ -42,7 +47,7 @@ def verify_case(output, number):
         return load_images()
 
     def feed(controls):
-        nonlocal tick, clock, phase
+        nonlocal tick, clock, phase, crowd_tick, cycles_before_counter
         tick += 1
         clock = (tick + 1) / 60
         if tick == 0:
@@ -55,9 +60,15 @@ def verify_case(output, number):
             push("up", key)
         if phase == "combat":
             for index, enemy in enumerate(original_enemies):
-                if enemy.state == "ATTACK" and enemy.attack_hit:
+                hitting = enemy.state == "ATTACK" and enemy.attack_hit
+                if hitting:
                     attempted.add(index)
-            if not player.attacking:
+                attack_cycles[index] += int(hitting and not previous_hits[index])
+                previous_hits[index] = hitting
+            if crowd_tick is None and all(count >= 2 for count in attack_cycles):
+                crowd_tick = tick
+                cycles_before_counter = attack_cycles.copy()
+            if crowd_tick is not None and tick > crowd_tick and not player.attacking:
                 candidates = [enemy for enemy in original_enemies if enemy.alive
                               and abs(enemy.x - player.x) <= 100]
                 for enemy in sorted(candidates, key=lambda enemy: abs(enemy.x - player.x)):
@@ -107,12 +118,13 @@ def verify_case(output, number):
         draw_enemy(image, enemy, **kwargs)
 
     def observe_health(image, current):
-        nonlocal all_visible, previous_feedback
+        nonlocal all_visible, previous_feedback, max_attackers
         draw_health(image, current)
         active = stages[-1]
         assert len(drawn) == 6 and all(a is b for a, b in zip(drawn, active.enemies))
         drawn.clear()
         if phase == "combat":
+            max_attackers = max(max_attackers, sum(enemy.state == "ATTACK" for enemy in original_enemies))
             assert current.health == 100 and current.hit_test_mode
             assert all(enemy.foot_y == stage.ground_y for enemy in stage.enemies)
             if not stage.cleared:
@@ -124,6 +136,11 @@ def verify_case(output, number):
                 all_visible = True
                 assert all(enemy.alive for enemy in original_enemies)
                 name = f"enemy-groups-{number}-six-approaching.png"
+                capture(output / name)
+                shots.append(name)
+            if tick == crowd_tick:
+                assert all(enemy.alive for enemy in original_enemies) and max_attackers >= 2
+                name = f"enemy-groups-{number}-crowded-attacking.png"
                 capture(output / name)
                 shots.append(name)
             if stage.cleared:
@@ -141,11 +158,14 @@ def verify_case(output, number):
           patch("main.draw_enemy", side_effect=observe_enemy), patch("main.draw_health", side_effect=observe_health)):
         result = main.run(frame_limit=1810)
     assert phase == "done" and load_count == 1
-    assert all_visible and impacts and len(shots) == 3
+    assert all_visible and impacts and len(shots) == 4
+    assert cycles_before_counter is not None and min(cycles_before_counter) >= 2
     assert not sdl2.SDL_WasInit(sdl2.SDL_INIT_VIDEO)
     return {"stage": number, "frames": result["frames"], "fixed_dt": 1 / 60,
             "spawn_x": original_positions, "attackers": sorted(attempted),
             "hit_effect_ticks": impacts, "all_six_drawn_each_frame": "PASS",
+            "crowded_without_killing_front_enemies": "PASS", "max_simultaneous_attackers": max_attackers,
+            "attack_cycles_before_counter": cycles_before_counter, "crowd_verified_tick": crowd_tick,
             "all_six_counterattacked_with_sdl_a": "PASS", "full_death_gate": "PASS",
             "travel_and_return": "PASS" if number < 6 else "final_exit_stays",
             "restart_six_enemies": "PASS", "image_loads": load_count, "screenshots": shots}

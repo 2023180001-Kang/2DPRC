@@ -25,7 +25,7 @@ from settings import (
     PLAYER_DEATH_FPS, PLAYER_DEATH_FRAMES, PLAYER_DEATH_ROW,
     PLAYER_DEATH_KNOCKBACK_DISTANCE, PLAYER_DEATH_KNOCKBACK_DURATION, PLAYER_DEATH_CLEARANCE,
     STAGE_GROUND_Y,
-    ENEMIES_PER_SIDE, ENEMY_ENTRY_SPACING,
+    ENEMIES_PER_SIDE, ENEMY_ENTRY_SPACING, ENEMY_GROUP_SPACING,
 )
 
 
@@ -184,7 +184,7 @@ class Enemy:
             self.state, self.animation_time = "IDLE", 0.0
             self.attack_cooldown = ENEMY_ATTACK_COOLDOWN
 
-    def update(self, dt, player=None):
+    def update(self, dt, player=None, *, approach_distance=None):
         if self.alive and player is not None and player.incapacitated:
             # Stop pursuing the body. Back away if knockback is blocked by a
             # screen edge, reserving space for the entire falling sprite.
@@ -220,13 +220,15 @@ class Enemy:
                 self.aware = self.relentless or distance <= detection_range
                 if self.aware and dx != 0:
                     self.facing = 1 if dx > 0 else -1
+                attack_distance = (ENEMY_ATTACK_START_RANGE if approach_distance is None else approach_distance)
                 if (self.aware and player.health > 0 and self.attack_cooldown <= 1e-9
-                        and distance <= ENEMY_ATTACK_START_RANGE
+                        and distance <= attack_distance + 1e-9
                         and abs(player.foot_y - self.foot_y) <= ENEMY_ATTACK_HEIGHT_RANGE):
                     self.state, self.animation_time, self.attack_hit = "ATTACK", 0.0, False
                     return
                 if self.aware and dx != 0:
-                    remaining = max(0.0, distance - ENEMY_STOP_DISTANCE)
+                    stop_distance = ENEMY_STOP_DISTANCE if approach_distance is None else approach_distance
+                    remaining = max(0.0, distance - stop_distance)
                     half_width = FRAME_WIDTH * ENEMY_SCALE / 2
                     room = WIDTH - half_width - self.x if self.facing > 0 else self.x - half_width
                     travel = min(ENEMY_CHASE_SPEED * dt, remaining, max(0.0, room))
@@ -370,24 +372,25 @@ class Stage:
         if player is not None:
             player.set_ground_y(self.ground_y)
             player.update_damage(dt)
-        # Front enemies move first; those behind wait rather than stacking.
+        # Give every pursuing enemy a place inside melee range. Allies can pass
+        # through each other; a front attacker must never seal the rear queue.
         ordered = sorted(self.enemies, key=lambda enemy: abs(enemy.x - player.x)) if player else self.enemies
+        groups = {-1: 0, 1: 0}
+        if player is not None:
+            for enemy in self.enemies:
+                if enemy.alive and enemy.relentless:
+                    groups[-1 if enemy.x < player.x else 1] += 1
+        slots = {-1: 0, 1: 0}
         for enemy in ordered:
-            old_x = enemy.x
-            enemy.update(dt, player)
-            if not enemy.alive or enemy.x == old_x or (player and player.incapacitated):
-                continue
-            direction = 1 if enemy.x > old_x else -1
-            spacing = 2 * ENEMY_BODY_HALF_WIDTH + 8.0
-            for other in self.enemies:
-                if other is enemy or not other.alive:
-                    continue
-                gap = direction * (other.x - old_x)
-                if gap >= spacing - 1e-9:
-                    travel = min(abs(enemy.x - old_x), max(0.0, gap - spacing))
-                    enemy.x = old_x + direction * travel
-            if enemy.x == old_x and enemy.state == "CHASE":
-                enemy.state, enemy.animation_time = "IDLE", 0.0
+            if player is not None and enemy.alive and enemy.relentless and not player.incapacitated:
+                side = -1 if enemy.x < player.x else 1
+                spacing = min(ENEMY_GROUP_SPACING,
+                              (ENEMY_ATTACK_START_RANGE - ENEMY_STOP_DISTANCE) / max(1, groups[side] - 1))
+                approach_distance = ENEMY_STOP_DISTANCE + slots[side] * spacing
+                slots[side] += 1
+                enemy.update(dt, player, approach_distance=approach_distance)
+            else:
+                enemy.update(dt, player)
         self._remember_clear()
 
     def try_transition(self, player, controls, rng=None):

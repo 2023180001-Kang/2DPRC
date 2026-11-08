@@ -57,14 +57,78 @@ class EnemyGroupTests(unittest.TestCase):
             enemy.update(0.1, player)
             self.assertEqual(enemy.facing, side)
 
-    def test_live_enemies_queue_without_stacking_even_on_long_steps(self):
-        for fps in (2, 30, 144):
-            stage, player = Stage([]), Player(hit_test_mode=True)
-            for _ in range(12 * fps):
-                stage.update(1 / fps, player)
-                ordered = sorted(stage.enemies, key=lambda enemy: enemy.x)
-                for left, right in zip(ordered, ordered[1:]):
-                    self.assertGreaterEqual(right.x - left.x, 2 * ENEMY_BODY_HALF_WIDTH + 8 - 1e-7)
+    def test_all_six_attack_repeatedly_without_killing_front_enemies(self):
+        for number in STAGE_BACKGROUNDS:
+            for fps in (30, 60, 144):
+                with self.subTest(stage=number, fps=fps):
+                    stage, player = Stage([], number=number), Player(hit_test_mode=True)
+                    hits = [0] * 6
+                    previous_hits = [False] * 6
+                    max_attackers = 0
+                    for _ in range(16 * fps):
+                        stage.update(1 / fps, player)
+                        player.update(1 / fps, Controls(), stage.collision_enemies)
+                        max_attackers = max(max_attackers, sum(enemy.state == "ATTACK" for enemy in stage.enemies))
+                        for index, enemy in enumerate(stage.enemies):
+                            hitting = enemy.state == "ATTACK" and enemy.attack_hit
+                            hits[index] += int(hitting and not previous_hits[index])
+                            previous_hits[index] = hitting
+                    self.assertTrue(all(count >= 2 for count in hits), hits)
+                    self.assertGreaterEqual(max_attackers, 2)
+                    self.assertTrue(all(enemy.alive for enemy in stage.enemies))
+                    self.assertFalse(stage.cleared)
+                    self.assertEqual(player.health, 100)
+
+    def test_all_six_can_attack_from_the_same_side_without_waiting_for_a_kill(self):
+        for side in (-1, 1):
+            for fps in (2, 30, 60, 144):
+                with self.subTest(side=side, fps=fps):
+                    enemies = [Enemy(x=640 + side * (150 + index * 72), relentless=True) for index in range(6)]
+                    stage, player = Stage([], enemies=enemies), Player(hit_test_mode=True)
+                    attacked = set()
+                    for _ in range(12 * fps):
+                        stage.update(1 / fps, player)
+                        player.update(1 / fps, Controls(), stage.collision_enemies)
+                        for index, enemy in enumerate(enemies):
+                            if enemy.state == "ATTACK" and enemy.attack_hit:
+                                attacked.add(index)
+                    self.assertEqual(attacked, set(range(6)))
+                    self.assertTrue(all(enemy.alive for enemy in enemies))
+                    self.assertTrue(all(56 <= abs(enemy.x - player.x) <= 90 + 1e-7 for enemy in enemies))
+
+    def test_six_packed_attackers_start_together_but_share_damage_immunity(self):
+        enemies = [Enemy(x=640 + side * (64 + index * 12), relentless=True)
+                   for side in (-1, 1) for index in range(3)]
+        stage, player = Stage([], enemies=enemies), Player()
+        stage.update(0, player)
+        self.assertTrue(all(enemy.state == "ATTACK" for enemy in enemies))
+        stage.update(ENEMY_ATTACK_HIT_TIME, player)
+        self.assertTrue(all(enemy.attack_hit for enemy in enemies))
+        self.assertEqual(player.health, 90)
+
+    def test_packed_enemies_follow_when_player_crosses_to_the_other_side(self):
+        enemies = [Enemy(x=640 - (64 + index * 5), relentless=True) for index in range(6)]
+        stage, player = Stage([], enemies=enemies), Player(hit_test_mode=True)
+        stage.update(0, player)
+        player.x = 300
+        for _ in range(4 * 60):
+            stage.update(1 / 60, player)
+            player.update(1 / 60, Controls(), stage.collision_enemies)
+        self.assertTrue(all(enemy.facing == -1 for enemy in enemies))
+        self.assertTrue(all(56 <= enemy.x - player.x <= 90 + 1e-7 for enemy in enemies))
+        self.assertTrue(all(enemy.alive for enemy in enemies))
+
+    def test_counterattack_cancels_only_the_hit_enemy_in_a_packed_group(self):
+        enemies = [Enemy(x=640 + side * (64 + index * 12), relentless=True)
+                   for side in (-1, 1) for index in range(3)]
+        stage, player = Stage([], enemies=enemies), Player()
+        stage.update(0, player)
+        player.update(0, Controls(attack_requested=True), stage.collision_enemies)
+        self.assertEqual(sum(enemy.state == "DYING" for enemy in enemies), 1)
+        self.assertEqual(sum(enemy.state == "ATTACK" for enemy in enemies), 5)
+        stage.update(ENEMY_ATTACK_HIT_TIME, player)
+        self.assertEqual(player.health, 90)
+        self.assertEqual(sum(enemy.attack_hit for enemy in enemies if enemy.alive), 5)
 
     def test_simultaneous_attackers_share_one_player_invulnerability_timer(self):
         enemies = [Enemy(x=576, facing=1, state="ATTACK"),

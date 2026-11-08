@@ -133,7 +133,7 @@ def verify_gameplay(output):
         draw_arrows(images, number, elapsed, **kwargs)
 
     with (patch("main.Player", return_value=player), patch("main.spawn_items", return_value=items),
-          patch("game.spawn_enemy", side_effect=lambda *args, **kwargs: Enemy(state="DEAD", foot_y=GROUND_Y - 1000)),
+          patch("game.spawn_enemies", side_effect=lambda *args, **kwargs: [Enemy(state="DEAD", foot_y=GROUND_Y - 1000)]),
           patch("main.poll_events", side_effect=feed), patch("main.perf_counter", side_effect=lambda: clock),
           patch("main.sleep"), patch("main.draw_character", side_effect=observe),
           patch("main.draw_health", side_effect=observe_health),

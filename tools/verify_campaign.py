@@ -1,4 +1,7 @@
-"""Verify six-map progression, death gates, item placement and round trips via SDL."""
+"""Verify map travel via SDL with a controlled single-enemy encounter per map.
+
+For production six-enemy encounters, run tools.verify_enemy_groups.
+"""
 
 import json
 from random import Random
@@ -166,7 +169,8 @@ def verify(output):
 
     with (patch("main.Player", return_value=player), patch("main.Stage", side_effect=make_stage),
           patch("main.spawn_items", side_effect=lambda: make_items()),
-          patch("game.spawn_items", side_effect=make_items), patch("game.spawn_enemy", side_effect=make_enemy),
+          patch("game.spawn_items", side_effect=make_items),
+          patch("game.spawn_enemies", side_effect=lambda *args, **kwargs: [make_enemy(*args, **kwargs)]),
           patch("main.load_images", side_effect=remember_images),
           patch("main.poll_events", side_effect=feed),
           patch("main.perf_counter", side_effect=lambda: clock), patch("main.sleep"),

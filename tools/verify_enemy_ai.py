@@ -170,7 +170,7 @@ def verify(output):
             pending_shot = None
 
     with (patch("main.Player", return_value=player), patch("main.Stage", return_value=stage),
-          patch("game.spawn_enemy", return_value=second) as spawn,
+          patch("game.spawn_enemies", return_value=[second]) as spawn,
           patch("main.poll_events", side_effect=feed),
           patch("main.perf_counter", side_effect=lambda: clock), patch("main.sleep"),
           patch("main.draw_health", side_effect=observe)):

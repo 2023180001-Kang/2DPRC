@@ -141,6 +141,7 @@ F로 줍는 범위는 플레이어 발 좌표에서 무기 중심까지 56픽셀
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe -m unittest discover -v
 .\.venv\Scripts\python.exe main.py --frames 180
+.\.venv\Scripts\python.exe -m tools.verify_enemy_groups
 .\.venv\Scripts\python.exe -m tools.verify_player_death
 .\.venv\Scripts\python.exe -m tools.verify_enemy_combat
 .\.venv\Scripts\python.exe -m tools.verify_enemy_ai

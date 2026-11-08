@@ -134,7 +134,8 @@ def verify_encounters(output):
             capture(output / filename)
             shots.append(filename)
 
-    with (patch("game.spawn_enemy", side_effect=create_enemy), patch("main.Stage", side_effect=create_stage),
+    with (patch("game.spawn_enemies", side_effect=lambda *args, **kwargs: [create_enemy(*args, **kwargs)]),
+          patch("main.Stage", side_effect=create_stage),
           patch("main.Player", return_value=player), patch("main.poll_events", side_effect=feed),
           patch("main.perf_counter", side_effect=lambda: clock), patch("main.sleep"),
           patch("main.draw_stage_arrows", side_effect=observe_arrows),
